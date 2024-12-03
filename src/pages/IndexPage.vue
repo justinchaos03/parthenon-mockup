@@ -35,6 +35,8 @@ export default defineComponent ({
     const numGridColumns = ref(0)
     const numGridRows = ref(null)
     const gridStyleSheet = ref(null)
+    const snapThreshold = 0.2
+
     const gridElements = ref({
       rows: [],
       columns: [],
@@ -44,6 +46,8 @@ export default defineComponent ({
       row: null,
       column: null,
     })
+
+
     const tooltip = ref(null)
     const dragging = ref(false)
 
@@ -54,6 +58,7 @@ export default defineComponent ({
       numGridColumns,
       numGridRows,
       gridStyleSheet,
+      snapThreshold,
       gridElements,
       selectedGrid,
       tooltip,
@@ -67,11 +72,11 @@ export default defineComponent ({
   },
   methods: {
     onDragStart (e) {
-      e.dataTransfer.setData('widgetId', e.target.dataset.widgetId)
+      console.log('other drag')
+      e.dataTransfer.setData('id', e.target.dataset.widgetId)
       e.dataTransfer.setData('moving', true)
       e.dataTransfer.dropEffect = 'move'
       this.dragging = true
-      console.log(this.dragging)
     },
 
     onDragOver (e) {
@@ -79,9 +84,22 @@ export default defineComponent ({
       if (!e.target.classList.contains('widget')) {
         const gridRect = e.currentTarget.getBoundingClientRect()
 
-        const rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
-        const columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
-        this.selectGrid(rowPlacement, columnPlacement)  
+        let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
+        let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
+
+        // Snap to previous or next grid
+        const gridHorizontalPlacement = rowPlacement % 1
+        const gridVerticalPlacement = columnPlacement % 1
+        
+        if (true) {
+          if ((gridHorizontalPlacement < this.snapThreshold || Math.abs(1 - gridHorizontalPlacement) < this.snapThreshold) &&
+           (gridVerticalPlacement < this.snapThreshold || Math.abs(1 - gridVerticalPlacement) < this.snapThreshold)) {
+            this.selectGrid(Math.round(rowPlacement), Math.round(columnPlacement)) 
+          } else {
+            this.clearSelectedGrid()
+          }
+        }
+        
       }
       
     },
@@ -97,15 +115,25 @@ export default defineComponent ({
 
     onDragDrop (e) {
       e.preventDefault()
+      const gridRect = e.currentTarget.getBoundingClientRect()
+      const gridPlacement = {
+        placement:'absolute',
+        x: e.clientX - gridRect.left,
+        y: e.clientY - gridRect.top
+      }
 
-      this.clearSelectedGrid()
+        // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
+        // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
+      
       
       const dropLocation = e.target.classList.contains('widget') ? e.target : this.gridContainer
 
       if (e.dataTransfer.getData('moving')) {
-        this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+        // this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+        this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
       } else {
-        this.addWidget(e.dataTransfer.getData('id'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+        // this.addWidget(e.dataTransfer.getData('id'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+        this.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
       }
       
 
@@ -114,9 +142,10 @@ export default defineComponent ({
       //   e.target.classList.remove('drag-enter')
       //   return
       // }
+      this.clearSelectedGrid()
     },
   
-    addWidget (widgetId, pageNode, rowNum = 0, columnNum = 0) {
+    addWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
       const currentWidgetId = this.props.pageWidgets.widgetId
       // Can experiment with transferring innerHTML instead if too slow
       const newWidget = document.getElementById(widgetId).cloneNode(true)
@@ -126,7 +155,9 @@ export default defineComponent ({
 
       newWidget.setAttribute('draggable', 'true')
       newWidget.addEventListener('dragover', (event) => {
-        event.target.classList.add('red')
+        if (newWidget.dataset.widgetId !== event.target.dataset.widgetId) {
+          event.target.classList.add('red')
+        }
       })
 
       newWidget.addEventListener('dragleave', (event) => {
@@ -143,15 +174,20 @@ export default defineComponent ({
         this.editWidget(currentWidgetId)
       });
       
-      if (pageNode === this.gridContainer) {
-        if (!newWidget.style.gridColumn) {
-          newWidget.style.gridColumn = `${columnNum + 1} / span 1`
-        }
-
-        if (!newWidget.style.gridRow) {
-          newWidget.style.gridRow = `${rowNum + 1} / span 1`
-        }
+      if (placement === 'absolute') {
+        newWidget.style.position = 'absolute'
+        newWidget.style.top = `${y}px`
+        newWidget.style.left = `${x}px`
       }
+      // if (pageNode === this.gridContainer) {
+      //   if (!newWidget.style.gridColumn) {
+      //     newWidget.style.gridColumn = `${columnNum + 1} / span 1`
+      //   }
+
+      //   if (!newWidget.style.gridRow) {
+      //     newWidget.style.gridRow = `${rowNum + 1} / span 1`
+      //   }
+      // }
 
       this.props.pageWidgets.widgets[currentWidgetId] = newWidget
       this.props.pageWidgets.widgetId += 1
@@ -164,16 +200,23 @@ export default defineComponent ({
       })
     },
 
-    moveWidget (widgetId, pageNode, rowNum = 0, columnNum = 0) {
+    moveWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
       // Can experiment with transferring innerHTML instead if too slow
       // Should just grab widget from pagewidgets.widgets by widget ID, instead of using element ID
       const displacedWidget = this.props.pageWidgets.widgets[widgetId]
-      if (pageNode === this.gridContainer) {
-        displacedWidget.style.gridColumn = `${columnNum + 1} / span 1`
-        displacedWidget.style.gridRow = `${rowNum + 1} / span 1`
-      } 
-      pageNode.appendChild(displacedWidget)
-  
+      // if (pageNode === this.gridContainer) {
+      //   displacedWidget.style.gridColumn = `${columnNum + 1} / span 1`
+      //   displacedWidget.style.gridRow = `${rowNum + 1} / span 1`
+      // } 
+      if (placement === 'absolute') {
+        displacedWidget.style.position = 'absolute'
+        displacedWidget.style.top = `${y}px`
+        displacedWidget.style.left = `${x}px`
+      }
+
+      if (pageNode !== displacedWidget && pageNode !== displacedWidget.parentNode) {
+        pageNode.appendChild(displacedWidget)
+      }
     },
 
     selectGrid: function (row, column) {
@@ -212,6 +255,9 @@ export default defineComponent ({
       if (selectedColumn !== null) {
         this.gridElements.columns[selectedColumn].classList.remove('red')
       }
+
+      this.selectedGrid.row = null
+      this.selectedGrid.column = null
     }
   },
   mounted () {

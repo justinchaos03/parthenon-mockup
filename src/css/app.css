@@ -1,0 +1,138 @@
+* {
+  box-sizing: border-box;
+}
+/* Sidebar menu */
+#widget-list {
+  p {
+    margin: 0;
+  }
+
+  .label {
+    flex-direction: row;
+    gap: 16px;
+
+    i {
+      font-size:28px;
+      margin: 0;
+    }
+
+    h4 {
+      font-size: 20px;
+      letter-spacing: 0.02em;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    p {
+      color: #555555;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+  }
+
+  .q-item__section:has(.q-expansion-item__toggle-icon) {
+    padding: 0;
+    margin-left: 16px;
+
+    .q-expansion-item__toggle-icon {
+      font-size: 28px;
+    }
+  }
+
+  .editor {
+    margin-top: 16px;
+    gap: 16px;
+    border-top: 1px solid black;
+
+    .settings {
+      & > .label {
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      & > .fields {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+  
+    .preview {
+      margin: 0;
+
+      & > .label {
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      & > *:last-child {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 2px solid black;
+        border-radius: 4px;
+        padding: 8px;
+      }
+    }
+  }
+
+  .drag-image {
+    transform: translateX(-9000%);
+  }
+}
+
+
+#page-container {
+
+  /* Grid Container */
+  #grid-container {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 50px);
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: minmax(calc(20vh - 10px), 200px);
+
+    & > .page-box {
+      display: flex;
+
+      &.row {
+        grid-column: 1 / -1;
+      }
+    }
+
+    .widget {
+      position: relative;
+      pointer-events: all !important;
+      cursor: pointer;
+
+
+      * {
+        pointer-events: none;
+
+      }
+
+      &.red {
+        border: 1px solid red;
+      }
+    }
+  }
+}
+
+#page-tooltip {
+  display: none;
+  position: absolute;
+  top: -1000px;
+  left: -1000px;
+  background-color: black;
+  color: white;
+  pointer-events: none;
+  z-index: 9999;
+
+  &.visible {
+    display: block;
+  }
+}

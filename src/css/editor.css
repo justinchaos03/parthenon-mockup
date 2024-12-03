@@ -1,0 +1,15 @@
+#grid-container {
+  & > .page-box {
+    border: 1px solid black;
+
+    &.red {
+      &.column {
+        border-left-color: red;
+      }
+      
+      &.row {
+        border-top-color: red;
+      }
+    }
+  }
+}

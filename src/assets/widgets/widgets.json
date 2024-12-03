@@ -1,0 +1,30 @@
+[
+  {
+    "title": "FakeWidget",
+    "caption": "Fake widget example",
+    "icon": "school",
+    "html": "container.html",
+    "settings": []
+  },
+  {
+    "groupName": "Containers",
+    "caption": "Group of containers",
+    "icon": "school",
+    "widgets" : [
+      {
+        "title": "Div",
+        "caption": "Generic container for other widgets",
+        "icon": "school",
+        "html": "test.html",
+        "settings": []
+      },
+      {
+        "title": "Div2",
+        "caption": "Generic container2 for other widgets",
+        "icon": "school",
+        "html": "test2.html",
+        "settings": []
+      }
+    ]
+  }
+]

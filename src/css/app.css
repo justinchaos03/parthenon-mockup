@@ -1,11 +1,12 @@
 * {
   box-sizing: border-box;
 }
+
+p {
+  margin: 0;
+}
 /* Sidebar menu */
 #widget-list {
-  p {
-    margin: 0;
-  }
 
   .label {
     flex-direction: row;
@@ -109,14 +110,13 @@
       pointer-events: all !important;
       cursor: pointer;
 
-
       * {
         pointer-events: none;
 
       }
 
       &.red {
-        border: 1px solid red;
+        outline: 1px solid red;
       }
     }
   }

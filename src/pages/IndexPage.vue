@@ -50,6 +50,7 @@ export default defineComponent ({
 
     const tooltip = ref(null)
     const dragging = ref(false)
+    const draggedWidget = ref(null)
 
     return {
       props,
@@ -62,7 +63,8 @@ export default defineComponent ({
       gridElements,
       selectedGrid,
       tooltip,
-      dragging
+      dragging,
+      draggedWidget
     }
   },
   computed: {
@@ -72,11 +74,13 @@ export default defineComponent ({
   },
   methods: {
     onDragStart (e) {
-      console.log('other drag')
       e.dataTransfer.setData('id', e.target.dataset.widgetId)
+      e.dataTransfer.setData('width', e.target.offsetWidth)
+      e.dataTransfer.setData('height', e.target.offsetHeight)
       e.dataTransfer.setData('moving', true)
       e.dataTransfer.dropEffect = 'move'
       this.dragging = true
+      this.draggedWidget = e.target.dataset.widgetId
     },
 
     onDragOver (e) {
@@ -111,22 +115,42 @@ export default defineComponent ({
 
     onDragEnd (e) {
       this.dragging = false
+      this.draggedWidget = null
     },
 
     onDragDrop (e) {
       e.preventDefault()
-      const gridRect = e.currentTarget.getBoundingClientRect()
-      const gridPlacement = {
-        placement:'absolute',
-        x: e.clientX - gridRect.left,
-        y: e.clientY - gridRect.top
-      }
-
-        // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
-        // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
-      
       
       const dropLocation = e.target.classList.contains('widget') ? e.target : this.gridContainer
+
+      const gridRect = dropLocation.getBoundingClientRect()
+
+      let gridPlacement = {}
+      if (dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
+        const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
+        const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
+
+        // Identify which grid square widget is in
+        const columnPlacement = Math.floor((e.clientX - gridRect.left) / gridWidth)
+        const rowPlacement = Math.floor((e.clientY - gridRect.top) / gridHeight)
+
+        // 'snap' location of item to closest corner
+        gridPlacement = {
+          placement:'absolute',
+          x: this.selectedGrid.column - columnPlacement === 0 ? columnPlacement * gridWidth : this.selectedGrid.column * gridWidth - e.dataTransfer.getData('width'),
+          y: this.selectedGrid.row - rowPlacement === 0 ? rowPlacement * gridHeight :this.selectedGrid.row * gridHeight - e.dataTransfer.getData('height')
+        }
+      } else {
+        gridPlacement = {
+          placement:'absolute',
+          x: e.clientX - gridRect.left - e.dataTransfer.getData('width') / 2,
+          y: e.clientY - gridRect.top - e.dataTransfer.getData('height') / 2
+        }
+      }
+   
+
+      // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
+      // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
 
       if (e.dataTransfer.getData('moving')) {
         // this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
@@ -155,8 +179,14 @@ export default defineComponent ({
 
       newWidget.setAttribute('draggable', 'true')
       newWidget.addEventListener('dragover', (event) => {
-        if (newWidget.dataset.widgetId !== event.target.dataset.widgetId) {
-          event.target.classList.add('red')
+        if (this.draggedWidget !== event.target.dataset?.widgetId) {
+          event.currentTarget.classList.add('red')
+        }
+      })
+
+      newWidget.addEventListener('dragstart', (event) => {
+        if (event.target !== event.currentTarget) {
+          event.currentTarget.classList.add('red')
         }
       })
 

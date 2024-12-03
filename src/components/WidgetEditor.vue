@@ -38,7 +38,9 @@
         </q-item-section>
         <q-item-section class="preview">
           <p class="label">Preview</p>
-          <div :id="this.props.title" :data-title="this.props.title"  :style="this.style" v-html="this.compiledHtml"></div>
+          <div>
+            <div :id="this.props.title" :data-title="this.props.title"  :style="this.style" v-html="this.compiledHtml"></div>
+          </div>
         </q-item-section>
       </q-item>
     </q-list>
@@ -110,10 +112,12 @@ export default {
         console.error("error getting file");
       });
     },
-    // store the id of the draggable element, removing '-editor' from the draggable element id
+    // store the id of the draggable element
     onDragStart (e) {
       e.dataTransfer.setDragImage(this.previewDragImage, 10, 10)
       e.dataTransfer.setData('id', this.preview.id)
+      e.dataTransfer.setData('width', this.preview.offsetWidth)
+      e.dataTransfer.setData('height', this.preview.offsetHeight)
       e.dataTransfer.dropEffect = 'move'
     }
   },

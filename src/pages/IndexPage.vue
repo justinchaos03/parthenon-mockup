@@ -51,6 +51,7 @@ export default defineComponent ({
     const tooltip = ref(null)
     const dragging = ref(false)
     const draggedWidget = ref(null)
+    const draggedWidgetZIndex = ref("auto")
 
     return {
       props,
@@ -64,7 +65,8 @@ export default defineComponent ({
       selectedGrid,
       tooltip,
       dragging,
-      draggedWidget
+      draggedWidget,
+      draggedWidgetZIndex
     }
   },
   computed: {
@@ -78,9 +80,14 @@ export default defineComponent ({
       e.dataTransfer.setData('width', e.target.offsetWidth)
       e.dataTransfer.setData('height', e.target.offsetHeight)
       e.dataTransfer.setData('moving', true)
+
+      if (e.target.style.zIndex.length > 0) {
+        this.draggedWidgetZIndex = e.target.style.zIndex
+      }
+      e.target.style.zIndex = 9999
       e.dataTransfer.dropEffect = 'move'
       this.dragging = true
-      this.draggedWidget = e.target.dataset.widgetId
+      this.draggedWidget = e.target
     },
 
     onDragOver (e) {
@@ -115,7 +122,9 @@ export default defineComponent ({
 
     onDragEnd (e) {
       this.dragging = false
+      this.draggedWidget.style.zIndex = this.draggedWidgetZIndex
       this.draggedWidget = null
+      this.draggedWidgetZIndex = 'auto'
     },
 
     onDragDrop (e) {
@@ -179,7 +188,7 @@ export default defineComponent ({
 
       newWidget.setAttribute('draggable', 'true')
       newWidget.addEventListener('dragover', (event) => {
-        if (this.draggedWidget !== event.target.dataset?.widgetId) {
+        if (this.draggedWidget?.dataset.widgetId !== event.target.dataset?.widgetId) {
           event.currentTarget.classList.add('red')
         }
       })

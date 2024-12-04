@@ -5,7 +5,9 @@
       @dragover="onDragOver"
       @dragend="onDragEnd"
       @dragleave="onDragLeave"
-      @drop="onDragDrop">
+      @drop="onDragDrop"
+      @mousemove="onMouseMove"
+      @mouseup="onMouseUp">
         <div v-for="index in this.numGridColumns" :key="index"
         class="page-box column" :class="['col-start-' + index , 'col-end-' + (index + 1)]">
         </div>
@@ -35,7 +37,13 @@ export default defineComponent ({
     const numGridColumns = ref(0)
     const numGridRows = ref(null)
     const gridStyleSheet = ref(null)
-    const snapThreshold = 0.2
+    const SNAP_THRESHOLD = 0.2
+    const RESIZE_CURSOR_THRESHOLD = (widget) => {
+      return {
+        x: Math.max(0.1 * widget.offsetWidth, 6),
+        y: Math.max(0.1 * widget.offsetHeight, 6)
+      }
+    }
 
     const gridElements = ref({
       rows: [],
@@ -49,9 +57,13 @@ export default defineComponent ({
 
 
     const tooltip = ref(null)
-    const dragging = ref(false)
-    const draggedWidget = ref(null)
-    const draggedWidgetZIndex = ref("auto")
+    const dragStatus = ref({
+      dragType: null,
+      draggedWidget: null,
+    })
+
+    // Store user-inputted styles temporarily when overriding
+    const userStyling = ref({})
 
     return {
       props,
@@ -60,13 +72,13 @@ export default defineComponent ({
       numGridColumns,
       numGridRows,
       gridStyleSheet,
-      snapThreshold,
+      SNAP_THRESHOLD,
+      RESIZE_CURSOR_THRESHOLD,
       gridElements,
       selectedGrid,
       tooltip,
-      dragging,
-      draggedWidget,
-      draggedWidgetZIndex
+      dragStatus,
+      userStyling
     }
   },
   computed: {
@@ -76,18 +88,57 @@ export default defineComponent ({
   },
   methods: {
     onDragStart (e) {
-      e.dataTransfer.setData('id', e.target.dataset.widgetId)
-      e.dataTransfer.setData('width', e.target.offsetWidth)
-      e.dataTransfer.setData('height', e.target.offsetHeight)
-      e.dataTransfer.setData('moving', true)
+      const x = e.offsetX
+      const y = e.offsetY
+      const resizeCursorThreshold = this.RESIZE_CURSOR_THRESHOLD(e.target)
 
-      if (e.target.style.zIndex.length > 0) {
-        this.draggedWidgetZIndex = e.target.style.zIndex
+      let cursorThresholdPlacement = {}
+      if (x < resizeCursorThreshold.x) {
+        cursorThresholdPlacement.horizontal = 'left'
+      } else if (x > e.target.offsetWidth - resizeCursorThreshold.x) {
+        cursorThresholdPlacement.horizontal = 'right'
       }
-      e.target.style.zIndex = 9999
-      e.dataTransfer.dropEffect = 'move'
-      this.dragging = true
-      this.draggedWidget = e.target
+
+      if (y < resizeCursorThreshold.y) {
+        cursorThresholdPlacement.vertical = 'top'
+      } else if (y > e.target.offsetHeight - resizeCursorThreshold.y) {
+        cursorThresholdPlacement.vertical = 'bottom'
+      }
+
+      if (cursorThresholdPlacement.horizontal && cursorThresholdPlacement.vertical) {
+        // Resize widget
+        e.stopPropagation()
+        e.preventDefault()
+        e.target.classList.add('resizing')
+        this.dragStatus = {
+          dragType: 'resizing',
+          draggedWidget: e.target,
+          cursorHorizontalPlacement: cursorThresholdPlacement.horizontal,
+          cursorVerticalPlacement: cursorThresholdPlacement.vertical,
+          initialTop:  parseInt(e.target.style.top),
+          initialLeft: parseInt(e.target.style.left),
+          initialCursorX: e.clientX,
+          initialCursorY: e.clientY,
+          initialWidth: e.target.offsetWidth,
+          initialHeight: e.target.offsetHeight
+        }
+      } else {
+        // Drag and move widget
+        e.dataTransfer.setData('id', e.target.dataset.widgetId)
+        e.dataTransfer.setData('width', e.target.offsetWidth)
+        e.dataTransfer.setData('height', e.target.offsetHeight)
+        e.dataTransfer.setData('moving', true)
+
+        e.target.classList.add('moving')
+        this.userStyling.zIndex = e.target.style.zIndex.length > 0 ? e.target.style.zIndex : 'auto'
+        e.target.style.zIndex = 9999
+        e.dataTransfer.dropEffect = 'move'
+        this.dragStatus = {
+          dragType: 'moving',
+          draggedWidget: e.target
+        }
+      }
+
     },
 
     onDragOver (e) {
@@ -103,8 +154,8 @@ export default defineComponent ({
         const gridVerticalPlacement = columnPlacement % 1
         
         if (true) {
-          if ((gridHorizontalPlacement < this.snapThreshold || Math.abs(1 - gridHorizontalPlacement) < this.snapThreshold) &&
-           (gridVerticalPlacement < this.snapThreshold || Math.abs(1 - gridVerticalPlacement) < this.snapThreshold)) {
+          if ((gridHorizontalPlacement < this.SNAP_THRESHOLD || Math.abs(1 - gridHorizontalPlacement) < this.SNAP_THRESHOLD) &&
+           (gridVerticalPlacement < this.SNAP_THRESHOLD || Math.abs(1 - gridVerticalPlacement) < this.SNAP_THRESHOLD)) {
             this.selectGrid(Math.round(rowPlacement), Math.round(columnPlacement)) 
           } else {
             this.clearSelectedGrid()
@@ -121,61 +172,98 @@ export default defineComponent ({
     },
 
     onDragEnd (e) {
-      this.dragging = false
-      this.draggedWidget.style.zIndex = this.draggedWidgetZIndex
-      this.draggedWidget = null
-      this.draggedWidgetZIndex = 'auto'
+      this.restoreUserStyling(this.dragStatus.draggedWidget)
+      this.resetDragStatus()
     },
 
     onDragDrop (e) {
       e.preventDefault()
-      
-      const dropLocation = e.target.classList.contains('widget') ? e.target : this.gridContainer
+      if (this.dragStatus.dragType !== 'resizing') {
+        const dropLocation = e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id') ? e.target : this.gridContainer
+        console.log(dropLocation)
 
-      const gridRect = dropLocation.getBoundingClientRect()
+        const gridRect = dropLocation.getBoundingClientRect()
 
-      let gridPlacement = {}
-      if (dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
-        const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
-        const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
+        let gridPlacement = {}
+        if (dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
+          const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
+          const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
 
-        // Identify which grid square widget is in
-        const columnPlacement = Math.floor((e.clientX - gridRect.left) / gridWidth)
-        const rowPlacement = Math.floor((e.clientY - gridRect.top) / gridHeight)
+          // Identify which grid square widget is in
+          const columnPlacement = Math.floor((e.clientX - gridRect.left) / gridWidth)
+          const rowPlacement = Math.floor((e.clientY - gridRect.top) / gridHeight)
 
-        // 'snap' location of item to closest corner
-        gridPlacement = {
-          placement:'absolute',
-          x: this.selectedGrid.column - columnPlacement === 0 ? columnPlacement * gridWidth : this.selectedGrid.column * gridWidth - e.dataTransfer.getData('width'),
-          y: this.selectedGrid.row - rowPlacement === 0 ? rowPlacement * gridHeight :this.selectedGrid.row * gridHeight - e.dataTransfer.getData('height')
+          // 'snap' location of item to closest corner
+          gridPlacement = {
+            placement:'absolute',
+            x: this.selectedGrid.column - columnPlacement === 0 ? columnPlacement * gridWidth : this.selectedGrid.column * gridWidth - e.dataTransfer.getData('width'),
+            y: this.selectedGrid.row - rowPlacement === 0 ? rowPlacement * gridHeight :this.selectedGrid.row * gridHeight - e.dataTransfer.getData('height')
+          }
+
+          console.log(`moving ${columnPlacement}, ${rowPlacement} to ${gridPlacement.x}, ${gridPlacement.y}`)
+        } else {
+          gridPlacement = {
+            placement:'absolute',
+            x: e.clientX - gridRect.left - e.dataTransfer.getData('width') / 2,
+            y: e.clientY - gridRect.top - e.dataTransfer.getData('height') / 2
+          }
         }
-      } else {
-        gridPlacement = {
-          placement:'absolute',
-          x: e.clientX - gridRect.left - e.dataTransfer.getData('width') / 2,
-          y: e.clientY - gridRect.top - e.dataTransfer.getData('height') / 2
+    
+
+        // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
+        // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
+
+        if (e.dataTransfer.getData('moving')) {
+          // this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+          this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
+        } else {
+          // this.addWidget(e.dataTransfer.getData('id'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
+          this.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
         }
-      }
-   
+        
 
-      // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
-      // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
-
-      if (e.dataTransfer.getData('moving')) {
-        // this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
-        this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
-      } else {
-        // this.addWidget(e.dataTransfer.getData('id'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
-        this.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
+        // check if original parent node
+        // if (draggedEl.parentNode === e.target) {
+        //   e.target.classList.remove('drag-enter')
+        //   return
+        // }
       }
       
-
-      // check if original parent node
-      // if (draggedEl.parentNode === e.target) {
-      //   e.target.classList.remove('drag-enter')
-      //   return
-      // }
       this.clearSelectedGrid()
+      this.restoreUserStyling(this.dragStatus.draggedWidget)
+      this.resetDragStatus()
+    },
+
+    onMouseMove (e) {
+      e.preventDefault()
+      if (this.dragStatus.dragType === 'resizing') {
+        const deltaX = e.clientX - this.dragStatus.initialCursorX
+        const deltaY = -(e.clientY - this.dragStatus.initialCursorY)
+
+        if (this.dragStatus.cursorHorizontalPlacement === 'left') {
+          this.dragStatus.draggedWidget.style.width = `${this.dragStatus.initialWidth - deltaX}px`
+          if (deltaX < this.dragStatus.initialWidth) {
+            this.dragStatus.draggedWidget.style.left = `${this.dragStatus.initialLeft + deltaX}px`
+          }
+        } else {
+          this.dragStatus.draggedWidget.style.width = `${this.dragStatus.initialWidth + deltaX}px`
+        }
+
+        if (this.dragStatus.cursorVerticalPlacement === 'top') {
+          this.dragStatus.draggedWidget.style.height = `${this.dragStatus.initialHeight + deltaY}px`
+          
+          if (deltaY > -1 * this.dragStatus.initialHeight) {
+            this.dragStatus.draggedWidget.style.top = `${this.dragStatus.initialTop - deltaY}px`
+          }
+        } else {
+          this.dragStatus.draggedWidget.style.height = `${this.dragStatus.initialHeight - deltaY}px`
+        }
+      }
+    },
+
+    onMouseUp (e) {
+      e.preventDefault()
+      this.resetDragStatus()
     },
   
     addWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
@@ -188,23 +276,23 @@ export default defineComponent ({
 
       newWidget.setAttribute('draggable', 'true')
       newWidget.addEventListener('dragover', (event) => {
-        if (this.draggedWidget?.dataset.widgetId !== event.target.dataset?.widgetId) {
-          event.currentTarget.classList.add('red')
+        if (this.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset?.widgetId) {
+          event.currentTarget.classList.add('green')
         }
       })
 
       newWidget.addEventListener('dragstart', (event) => {
         if (event.target !== event.currentTarget) {
-          event.currentTarget.classList.add('red')
+          event.currentTarget.classList.add('green')
         }
       })
 
       newWidget.addEventListener('dragleave', (event) => {
-        event.currentTarget.classList.remove('red')
+        event.currentTarget.classList.remove('green')
       })
 
       newWidget.addEventListener('drop', (event) => {
-        event.currentTarget.classList.remove('red')
+        event.currentTarget.classList.remove('green')
       })
 
       newWidget.addEventListener("dblclick", (event) => {
@@ -212,6 +300,36 @@ export default defineComponent ({
         this.tooltip.classList.remove('visible')
         this.editWidget(currentWidgetId)
       });
+
+      // change user cursor based on mouse location
+      newWidget.addEventListener("mousemove", (event) => {
+        const x = event.offsetX
+        const y = event.offsetY
+        const resizeCursorThreshold = this.RESIZE_CURSOR_THRESHOLD(newWidget)
+
+        this.userStyling.cursor ||= newWidget.style.cursor.length > 0 ? newWidget.style.cursor : 'pointer'
+        // change cursor based on which corner user is hovering over
+        if (x < resizeCursorThreshold.x && y < resizeCursorThreshold.y) {
+          newWidget.style.cursor = 'nw-resize'
+        } else if (x < resizeCursorThreshold.x && y > newWidget.offsetHeight - resizeCursorThreshold.y) {
+          newWidget.style.cursor = 'sw-resize'
+        } else if (x > newWidget.offsetWidth - resizeCursorThreshold.x && y < resizeCursorThreshold.y) {
+          newWidget.style.cursor = 'ne-resize'
+        } else if (x > newWidget.offsetWidth - resizeCursorThreshold.x && y > newWidget.offsetHeight - resizeCursorThreshold.y) {
+          newWidget.style.cursor = 'se-resize'
+        } else {
+          newWidget.style.cursor = this.userStyling.cursor
+        }
+
+        if (this.dragStatus.dragType === 'resizing' && this.dragStatus.draggedWidget !== event.currentTarget) {
+            event.currentTarget.classList.add('green')
+        }
+      })
+
+      newWidget.addEventListener("mouseup", (event) => {
+        event.currentTarget.classList.remove('green')
+        this.restoreUserStyling(newWidget)
+      })
       
       if (placement === 'absolute') {
         newWidget.style.position = 'absolute'
@@ -258,7 +376,7 @@ export default defineComponent ({
       }
     },
 
-    selectGrid: function (row, column) {
+    selectGrid (row, column) {
       const rowNum = Math.floor(row)
       const columnNum = Math.floor(column)
       const selectedRow = this.selectedGrid.row
@@ -283,7 +401,7 @@ export default defineComponent ({
       }
     },
   
-    clearSelectedGrid: function () {
+    clearSelectedGrid () {
       const selectedRow = this.selectedGrid.row
       const selectedColumn = this.selectedGrid.column
 
@@ -297,6 +415,24 @@ export default defineComponent ({
 
       this.selectedGrid.row = null
       this.selectedGrid.column = null
+    },
+
+    restoreUserStyling (widget) {
+      Object.entries(this.userStyling).forEach(([originalStyle, value]) => {
+        widget.style[originalStyle] = value
+      })
+
+      this.userStyling = {}
+    },
+
+    resetDragStatus () {
+      this.dragStatus.draggedWidget?.classList.remove('resizing')
+      this.dragStatus.draggedWidget?.classList.remove('moving')
+
+      this.dragStatus = {
+        dragType: null,
+        draggedWidget: null,
+      }
     }
   },
   mounted () {
@@ -316,7 +452,7 @@ export default defineComponent ({
     this.tooltip = document.getElementById("page-tooltip")
     let timer
     const showTooltip = (event) => {
-      if (!this.dragging) {
+      if (!this.dragStatus.dragType) {
         const widget = event.target.closest(".widget")
         if (widget) {
           this.tooltip.classList.add("visible")

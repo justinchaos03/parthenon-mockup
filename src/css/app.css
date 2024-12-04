@@ -108,15 +108,32 @@ p {
     .widget {
       position: relative;
       pointer-events: all !important;
-      cursor: pointer;
+      cursor: move;
 
       * {
         pointer-events: none;
 
       }
 
+      &:not(:has(*:hover)):hover {
+        outline: 2px solid pink;
+      }
+
       &.red {
-        outline: 1px solid red;
+        outline: 2px solid red !important;
+      }
+
+      &.green {
+        outline: 2px solid green !important;
+      }
+
+      &.resizing {
+        outline: 2px dotted blue !important;
+      }
+
+      &.moving {
+        border: 2px dotted blue;
+        outline: none !important;
       }
     }
   }

@@ -114,7 +114,7 @@ export default {
     },
     // store the id of the draggable element
     onDragStart (e) {
-      e.dataTransfer.setDragImage(this.previewDragImage, 10, 10)
+      e.dataTransfer.setDragImage(this.previewDragImage, 0, 0)
       e.dataTransfer.setData('id', this.preview.id)
       e.dataTransfer.setData('width', this.preview.offsetWidth)
       e.dataTransfer.setData('height', this.preview.offsetHeight)

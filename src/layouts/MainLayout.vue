@@ -15,7 +15,21 @@
           Quasar App
         </q-toolbar-title>
 
-        <div>Quasar v{{ $q.version }}</div>
+        <q-btn-dropdown stretch flat label="Display Settings">
+          <q-list>
+            <q-item>
+              <q-toggle
+                v-model="this.toolbarOptions.showGrid"
+                checked-icon="check"
+                color="black"
+                keep-color
+                label="Show Grid"
+                left-label
+                unchecked-icon="clear"
+              />
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
       </q-toolbar>
     </q-header>
 
@@ -70,7 +84,12 @@
     </q-drawer>
 
     <q-page-container>
-      <router-view :pageWidgets="this.pageWidgets['home']" :dragStatus="this.dragStatus" :updateDragStatus="this.updateDragStatus" @editWidget="openEditWidgetForm"/>
+      <router-view 
+      :toolbarOptions="this.toolbarOptions"
+      :pageWidgets="this.pageWidgets['home']"
+      :dragStatus="this.dragStatus"
+      :updateDragStatus="this.updateDragStatus"
+      @editWidget="openEditWidgetForm"/>
     </q-page-container>
   </q-layout>
 </template>
@@ -107,6 +126,10 @@ export default defineComponent ({
     const editWidgetFormOpen = ref(false)
     const currentlyEditedWidget = ref({})
 
+    const toolbarOptions = ref({
+      showGrid: false
+    })
+
     const dragStatus = ref({
       dragType: null,
       draggedWidget: null,
@@ -124,6 +147,7 @@ export default defineComponent ({
       showNewGroupForm,
       editWidgetFormOpen,
       currentlyEditedWidget,
+      toolbarOptions,
       dragStatus
     }
   },

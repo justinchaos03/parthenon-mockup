@@ -7,7 +7,8 @@
       @dragleave="onDragLeave"
       @drop="onDragDrop"
       @mousemove="onMouseMove"
-      @mouseup="onMouseUp">
+      @mouseup="onMouseUp"
+      :class="{ 'show-grid' : this.props.toolbarOptions.showGrid }">
         <div v-for="index in this.numGridColumns" :key="index"
         class="page-box column" :class="['col-start-' + index , 'col-end-' + (index + 1)]">
         </div>
@@ -26,6 +27,10 @@ export default defineComponent ({
   name: 'PageIndex',
   emits: ['editWidget'],
   props: {
+    toolbarOptions: {
+      type: Object
+    },
+
     pageWidgets: {
       type: Object,
       required: true
@@ -158,7 +163,10 @@ export default defineComponent ({
 
     onDragOver (e) {
       e.preventDefault()
-      if (!e.target.classList.contains('widget') && (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving')) {
+      // If showing grid AND holding alt key, display and snap dragged elements to grid lines
+      if (this.props.toolbarOptions.showGrid && e.shiftKey &&
+      !e.target.classList.contains('widget') && 
+      (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving')) {
         const gridRect = e.currentTarget.getBoundingClientRect()
         const edgeDistance = this.props.dragStatus.edgeDistance
         const cursorRect = {
@@ -235,7 +243,9 @@ export default defineComponent ({
 
         let gridPlacement = {}
         
-        if (dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
+        // If showing grid AND holding alt key, drop element at nearest grid line, if possible
+        if (this.props.toolbarOptions.showGrid && e.shiftKey &&
+          dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
           const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
           const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
 
@@ -413,7 +423,7 @@ export default defineComponent ({
     selectGrid (column, row) {
       const rowNum = Math.floor(row[0])
       const columnNum = Math.floor(column[0])
-      
+
       const selectedRow = this.selectedGrid.row
       const selectedColumn = this.selectedGrid.column
 

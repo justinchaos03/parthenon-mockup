@@ -29,6 +29,15 @@ export default defineComponent ({
     pageWidgets: {
       type: Object,
       required: true
+    },
+
+    dragStatus: {
+      type: Object,
+      required: true
+    },
+
+    updateDragStatus: {
+      type: Function
     }
   },
   setup (props) {
@@ -37,7 +46,7 @@ export default defineComponent ({
     const numGridColumns = ref(0)
     const numGridRows = ref(null)
     const gridStyleSheet = ref(null)
-    const SNAP_THRESHOLD = 0.2
+    const SNAP_THRESHOLD = 16
     const RESIZE_CURSOR_THRESHOLD = (widget) => {
       return {
         x: Math.max(0.1 * widget.offsetWidth, 6),
@@ -53,14 +62,13 @@ export default defineComponent ({
     const selectedGrid = ref({
       row: null,
       column: null,
+      verticalPlacement: null,
+      horizontalPlacement: null
     })
 
 
     const tooltip = ref(null)
-    const dragStatus = ref({
-      dragType: null,
-      draggedWidget: null,
-    })
+
 
     // Store user-inputted styles temporarily when overriding
     const userStyling = ref({})
@@ -77,7 +85,6 @@ export default defineComponent ({
       gridElements,
       selectedGrid,
       tooltip,
-      dragStatus,
       userStyling
     }
   },
@@ -110,18 +117,20 @@ export default defineComponent ({
         e.stopPropagation()
         e.preventDefault()
         e.target.classList.add('resizing')
-        this.dragStatus = {
+        // convert to boundingrect
+        this.props.updateDragStatus({
           dragType: 'resizing',
           draggedWidget: e.target,
           cursorHorizontalPlacement: cursorThresholdPlacement.horizontal,
           cursorVerticalPlacement: cursorThresholdPlacement.vertical,
           initialTop:  parseInt(e.target.style.top),
           initialLeft: parseInt(e.target.style.left),
-          initialCursorX: e.clientX,
-          initialCursorY: e.clientY,
+          initialAbsoluteCursorX: e.clientX,
+          initialAbsoluteCursorY: e.clientY,
           initialWidth: e.target.offsetWidth,
-          initialHeight: e.target.offsetHeight
-        }
+          initialHeight: e.target.offsetHeight,
+          edgeDistance: null
+        })
       } else {
         // Drag and move widget
         e.dataTransfer.setData('id', e.target.dataset.widgetId)
@@ -133,37 +142,78 @@ export default defineComponent ({
         this.userStyling.zIndex = e.target.style.zIndex.length > 0 ? e.target.style.zIndex : 'auto'
         e.target.style.zIndex = 9999
         e.dataTransfer.dropEffect = 'move'
-        this.dragStatus = {
+        this.props.updateDragStatus({
           dragType: 'moving',
-          draggedWidget: e.target
-        }
+          draggedWidget: e.target,
+          edgeDistance: {
+            top: e.offsetY,
+            bottom: e.target.offsetHeight - e.offsetY,
+            left: e.offsetX, 
+            right: e.target.offsetWidth - e.offsetX
+          }
+        })
       }
 
     },
 
     onDragOver (e) {
       e.preventDefault()
-      if (!e.target.classList.contains('widget')) {
+      if (!e.target.classList.contains('widget') && (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving')) {
         const gridRect = e.currentTarget.getBoundingClientRect()
-
-        let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
-        let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
-
-        // Snap to previous or next grid
-        const gridHorizontalPlacement = rowPlacement % 1
-        const gridVerticalPlacement = columnPlacement % 1
+        const edgeDistance = this.props.dragStatus.edgeDistance
+        const cursorRect = {
+          top: e.clientY - edgeDistance.top,
+          bottom: e.clientY + edgeDistance.bottom,
+          left: e.clientX - edgeDistance.left,
+          right: e.clientX + edgeDistance.right
+        }
         
+        const gridSquareWidth = e.currentTarget.scrollWidth / this.numGridColumns
+        const gridSquareHeight = e.currentTarget.scrollHeight / this.numGridRows;
+
+        const leftDistance = (cursorRect.left - gridRect.left) / gridSquareWidth
+        const leftColumn = Math.round(leftDistance)
+
+        const rightDistance = (cursorRect.right - gridRect.left) / gridSquareWidth
+        const rightColumn = Math.round(rightDistance)
+
+        const topDistance = (cursorRect.top - gridRect.top) / gridSquareHeight
+        const topRow = Math.round(topDistance)
+
+        const bottomDistance = (cursorRect.bottom- gridRect.top) / gridSquareHeight
+        const bottomRow = Math.round(bottomDistance)
+
+        let nearestColumn = [0, "top"]
+        let nearestRow = [0, "left"]
+        let columnDistance = 1
+        let rowDistance = 1
+
+        if (Math.abs(rightDistance - rightColumn) < Math.abs(leftDistance - leftColumn)) {
+          nearestColumn = [rightColumn, "right"]
+          columnDistance = Math.abs(rightDistance - rightColumn)
+        } else {
+          nearestColumn = [leftColumn, "left"]
+          columnDistance = Math.abs(leftDistance - leftColumn)
+        }
+
+        if (Math.abs(bottomDistance - bottomRow) < Math.abs(topDistance - topRow)) {
+          nearestRow = [bottomRow, "bottom"]
+          rowDistance = Math.abs(bottomDistance - bottomRow)
+        } else {
+          nearestRow = [topRow, "top"]
+          rowDistance = Math.abs(topDistance - topRow)
+        } 
+
+
+        // Snap to nearest gridlines, if close enough
         if (true) {
-          if ((gridHorizontalPlacement < this.SNAP_THRESHOLD || Math.abs(1 - gridHorizontalPlacement) < this.SNAP_THRESHOLD) &&
-           (gridVerticalPlacement < this.SNAP_THRESHOLD || Math.abs(1 - gridVerticalPlacement) < this.SNAP_THRESHOLD)) {
-            this.selectGrid(Math.round(rowPlacement), Math.round(columnPlacement)) 
+          if (columnDistance * gridSquareWidth < this.SNAP_THRESHOLD && rowDistance * gridSquareHeight < this.SNAP_THRESHOLD) {
+            this.selectGrid(nearestColumn, nearestRow) 
           } else {
             this.clearSelectedGrid()
           }
         }
-        
-      }
-      
+      } 
     },
 
     onDragLeave (e) {
@@ -172,35 +222,32 @@ export default defineComponent ({
     },
 
     onDragEnd (e) {
-      this.restoreUserStyling(this.dragStatus.draggedWidget)
+      this.restoreUserStyling(this.props.dragStatus.draggedWidget)
       this.resetDragStatus()
     },
 
     onDragDrop (e) {
       e.preventDefault()
-      if (this.dragStatus.dragType !== 'resizing') {
+      if (this.props.dragStatus.dragType !== 'resizing') {
         const dropLocation = e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id') ? e.target : this.gridContainer
-        console.log(dropLocation)
 
         const gridRect = dropLocation.getBoundingClientRect()
 
         let gridPlacement = {}
+        
         if (dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
           const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
           const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
 
-          // Identify which grid square widget is in
-          const columnPlacement = Math.floor((e.clientX - gridRect.left) / gridWidth)
-          const rowPlacement = Math.floor((e.clientY - gridRect.top) / gridHeight)
+          const isRight = this.selectedGrid.horizontalPlacement === 'right' ? 1 : 0
+          const isBottom = this.selectedGrid.verticalPlacement === 'bottom' ? 1 : 0
 
-          // 'snap' location of item to closest corner
           gridPlacement = {
             placement:'absolute',
-            x: this.selectedGrid.column - columnPlacement === 0 ? columnPlacement * gridWidth : this.selectedGrid.column * gridWidth - e.dataTransfer.getData('width'),
-            y: this.selectedGrid.row - rowPlacement === 0 ? rowPlacement * gridHeight :this.selectedGrid.row * gridHeight - e.dataTransfer.getData('height')
+            x: this.selectedGrid.column * gridWidth - isRight * this.dragStatus.draggedWidget.offsetWidth,
+            y: this.selectedGrid.row * gridHeight - isBottom * this.dragStatus.draggedWidget.offsetHeight
           }
 
-          console.log(`moving ${columnPlacement}, ${rowPlacement} to ${gridPlacement.x}, ${gridPlacement.y}`)
         } else {
           gridPlacement = {
             placement:'absolute',
@@ -209,54 +256,41 @@ export default defineComponent ({
           }
         }
     
-
-        // let rowPlacement = (e.clientY - gridRect.top) / (e.currentTarget.scrollHeight / this.numGridRows)
-        // let columnPlacement = (e.clientX - gridRect.left) / (e.currentTarget.scrollWidth / this.numGridColumns)
-
         if (e.dataTransfer.getData('moving')) {
-          // this.moveWidget(e.dataTransfer.getData('widgetId'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
           this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
         } else {
-          // this.addWidget(e.dataTransfer.getData('id'), dropLocation, this.selectedGrid.row, this.selectedGrid.column)
           this.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
         }
-        
-
-        // check if original parent node
-        // if (draggedEl.parentNode === e.target) {
-        //   e.target.classList.remove('drag-enter')
-        //   return
-        // }
       }
       
       this.clearSelectedGrid()
-      this.restoreUserStyling(this.dragStatus.draggedWidget)
+      this.restoreUserStyling(this.props.dragStatus.draggedWidget)
       this.resetDragStatus()
     },
 
     onMouseMove (e) {
       e.preventDefault()
-      if (this.dragStatus.dragType === 'resizing') {
-        const deltaX = e.clientX - this.dragStatus.initialCursorX
-        const deltaY = -(e.clientY - this.dragStatus.initialCursorY)
+      if (this.props.dragStatus.dragType === 'resizing') {
+        const deltaX = e.clientX - this.props.dragStatus.initialAbsoluteCursorX
+        const deltaY = -(e.clientY - this.props.dragStatus.initialAbsoluteCursorY)
 
-        if (this.dragStatus.cursorHorizontalPlacement === 'left') {
-          this.dragStatus.draggedWidget.style.width = `${this.dragStatus.initialWidth - deltaX}px`
-          if (deltaX < this.dragStatus.initialWidth) {
-            this.dragStatus.draggedWidget.style.left = `${this.dragStatus.initialLeft + deltaX}px`
+        if (this.props.dragStatus.cursorHorizontalPlacement === 'left') {
+          this.props.dragStatus.draggedWidget.style.width = `${this.props.dragStatus.initialWidth - deltaX}px`
+          if (deltaX < this.props.dragStatus.initialWidth) {
+            this.props.dragStatus.draggedWidget.style.left = `${this.props.dragStatus.initialLeft + deltaX}px`
           }
         } else {
-          this.dragStatus.draggedWidget.style.width = `${this.dragStatus.initialWidth + deltaX}px`
+          this.props.dragStatus.draggedWidget.style.width = `${this.props.dragStatus.initialWidth + deltaX}px`
         }
 
-        if (this.dragStatus.cursorVerticalPlacement === 'top') {
-          this.dragStatus.draggedWidget.style.height = `${this.dragStatus.initialHeight + deltaY}px`
+        if (this.props.dragStatus.cursorVerticalPlacement === 'top') {
+          this.props.dragStatus.draggedWidget.style.height = `${this.props.dragStatus.initialHeight + deltaY}px`
           
-          if (deltaY > -1 * this.dragStatus.initialHeight) {
-            this.dragStatus.draggedWidget.style.top = `${this.dragStatus.initialTop - deltaY}px`
+          if (deltaY > -1 * this.props.dragStatus.initialHeight) {
+            this.props.dragStatus.draggedWidget.style.top = `${this.props.dragStatus.initialTop - deltaY}px`
           }
         } else {
-          this.dragStatus.draggedWidget.style.height = `${this.dragStatus.initialHeight - deltaY}px`
+          this.props.dragStatus.draggedWidget.style.height = `${this.props.dragStatus.initialHeight - deltaY}px`
         }
       }
     },
@@ -276,7 +310,7 @@ export default defineComponent ({
 
       newWidget.setAttribute('draggable', 'true')
       newWidget.addEventListener('dragover', (event) => {
-        if (this.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset?.widgetId) {
+        if (this.props.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset?.widgetId) {
           event.currentTarget.classList.add('green')
         }
       })
@@ -321,7 +355,7 @@ export default defineComponent ({
           newWidget.style.cursor = this.userStyling.cursor
         }
 
-        if (this.dragStatus.dragType === 'resizing' && this.dragStatus.draggedWidget !== event.currentTarget) {
+        if (this.props.dragStatus.dragType === 'resizing' && this.props.dragStatus.draggedWidget !== event.currentTarget) {
             event.currentTarget.classList.add('green')
         }
       })
@@ -376,9 +410,10 @@ export default defineComponent ({
       }
     },
 
-    selectGrid (row, column) {
-      const rowNum = Math.floor(row)
-      const columnNum = Math.floor(column)
+    selectGrid (column, row) {
+      const rowNum = Math.floor(row[0])
+      const columnNum = Math.floor(column[0])
+      
       const selectedRow = this.selectedGrid.row
       const selectedColumn = this.selectedGrid.column
 
@@ -394,10 +429,13 @@ export default defineComponent ({
 
         this.gridElements.rows[rowNum].classList.add('red')
         this.gridElements.columns[columnNum].classList.add('red')
-        this.selectedGrid = {
+      }
+
+      this.selectedGrid = {
           row: rowNum,
-          column: columnNum
-        }
+          column: columnNum,
+          verticalPlacement: row[1],
+          horizontalPlacement: column[1]
       }
     },
   
@@ -413,8 +451,12 @@ export default defineComponent ({
         this.gridElements.columns[selectedColumn].classList.remove('red')
       }
 
-      this.selectedGrid.row = null
-      this.selectedGrid.column = null
+      this.selectedGrid = {
+          row: null,
+          column: null,
+          verticalPlacement: null,
+          horizontalPlacement: null
+      }
     },
 
     restoreUserStyling (widget) {
@@ -426,13 +468,14 @@ export default defineComponent ({
     },
 
     resetDragStatus () {
-      this.dragStatus.draggedWidget?.classList.remove('resizing')
-      this.dragStatus.draggedWidget?.classList.remove('moving')
+      this.props.dragStatus.draggedWidget?.classList.remove('resizing')
+      this.props.dragStatus.draggedWidget?.classList.remove('moving')
 
-      this.dragStatus = {
+      this.props.updateDragStatus({
         dragType: null,
         draggedWidget: null,
-      }
+        edgeDistance: null,
+      })
     }
   },
   mounted () {
@@ -452,7 +495,7 @@ export default defineComponent ({
     this.tooltip = document.getElementById("page-tooltip")
     let timer
     const showTooltip = (event) => {
-      if (!this.dragStatus.dragType) {
+      if (!this.props.dragStatus.dragType) {
         const widget = event.target.closest(".widget")
         if (widget) {
           this.tooltip.classList.add("visible")

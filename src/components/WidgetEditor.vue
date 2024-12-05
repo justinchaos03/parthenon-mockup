@@ -77,7 +77,11 @@ export default {
     settings: {
       type: Object,
       default: new Object()
-    }
+    },
+
+    updateDragStatus: {
+      type: Function
+    },
   },
   setup (props) {
     const rawHTML = ref("")
@@ -114,11 +118,22 @@ export default {
     },
     // store the id of the draggable element
     onDragStart (e) {
-      e.dataTransfer.setDragImage(this.previewDragImage, 0, 0)
+      e.dataTransfer.setDragImage(this.previewDragImage, 10, 10)
       e.dataTransfer.setData('id', this.preview.id)
       e.dataTransfer.setData('width', this.preview.offsetWidth)
       e.dataTransfer.setData('height', this.preview.offsetHeight)
       e.dataTransfer.dropEffect = 'move'
+      const previewRect = this.preview.getBoundingClientRect()
+      this.props.updateDragStatus({
+          dragType: 'adding',
+          draggedWidget: this.preview,
+          edgeDistance: {
+            top: 10,
+            bottom: previewRect.height -10,
+            left: 10,
+            right: previewRect.width - 10,
+          }
+      })
     }
   },
   created () {

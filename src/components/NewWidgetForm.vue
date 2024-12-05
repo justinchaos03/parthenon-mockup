@@ -109,7 +109,7 @@ export default {
     showNewGroupForm: {
       type: Boolean,
       default: undefined
-    }
+    },
   },
   emits: ['submit', 'close', 'updateGroup'],
   setup (props) {

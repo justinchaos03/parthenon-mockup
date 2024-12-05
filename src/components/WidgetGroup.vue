@@ -19,6 +19,7 @@
         v-for="widget in this.props.widgets"
         :key="widget.title"
         v-bind="widget"
+        :updateDragStatus="this.updateDragStatus"
       />
     </q-list>
   </q-expansion-item>
@@ -47,6 +48,10 @@ export default {
     widgets: {
       type: Array,
       default: new Array()
+    },
+
+    updateDragStatus: {
+      type: Function
     }
   },
   components: {

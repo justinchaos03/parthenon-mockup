@@ -36,11 +36,13 @@
             v-if="widget.groupName"
             :key="widget.groupName"
             v-bind="widget"
+            :updateDragStatus="this.updateDragStatus"
           />
           <WidgetEditor
             v-else
             :key="widget.title"
             v-bind="widget"
+            :updateDragStatus="this.updateDragStatus"
           />
         </template>
         <q-btn
@@ -68,7 +70,7 @@
     </q-drawer>
 
     <q-page-container>
-      <router-view :pageWidgets="this.pageWidgets['home']" @editWidget="openEditWidgetForm"/>
+      <router-view :pageWidgets="this.pageWidgets['home']" :dragStatus="this.dragStatus" :updateDragStatus="this.updateDragStatus" @editWidget="openEditWidgetForm"/>
     </q-page-container>
   </q-layout>
 </template>
@@ -105,6 +107,12 @@ export default defineComponent ({
     const editWidgetFormOpen = ref(false)
     const currentlyEditedWidget = ref({})
 
+    const dragStatus = ref({
+      dragType: null,
+      draggedWidget: null,
+      edgeDistance: null,
+    })
+
     
     return {
       widgetStructure,
@@ -116,6 +124,7 @@ export default defineComponent ({
       showNewGroupForm,
       editWidgetFormOpen,
       currentlyEditedWidget,
+      dragStatus
     }
   },
   components: {
@@ -239,9 +248,13 @@ export default defineComponent ({
       this.pageWidgets['home'].widgets[widgetId].remove()
       delete this.pageWidgets['home'].widgets[widgetId]
     },
+
+    updateDragStatus (newDragStatus) {
+      this.dragStatus = newDragStatus
+    }
   },
   created () {
     this.getWidgets()
-  }
+  },
 })
 </script>

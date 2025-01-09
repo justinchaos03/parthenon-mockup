@@ -1,37 +1,55 @@
 <template>
   <div id="page-container">
+    <svg id ="arrow-container"></svg>
     <div id="grid-container"
       @dragstart="onDragStart"
       @dragover="onDragOver"
-      @dragend="onDragEnd"
       @dragleave="onDragLeave"
       @drop="onDragDrop"
       @mousemove="onMouseMove"
       @mouseup="onMouseUp"
+      class='show-comments'
       :class="{ 'show-grid' : this.props.toolbarOptions.showGrid }">
-        <div v-for="index in this.numGridColumns" :key="index"
+        <div v-for="index in this.gridMetaData.numGridColumns" :key="index"
         class="page-box column" :class="['col-start-' + index , 'col-end-' + (index + 1)]">
         </div>
-        <div v-for="index in this.numGridRows" :key="index"
+        <div v-for="index in this.gridMetaData.numGridRows" :key="index"
         class="page-box row" :class="['row-start-' + index , 'row-end-' + (index + 1)]">
         </div>
     </div>
+    <div id="options-menu">
+      <div class="option">
+        <button id="show-comments" class="slider active"></button>
+        <div class="label">
+          <p>Show Comments?</p>
+        </div>
+      </div>
+    </div>
   </div>
-  <p id="page-tooltip"></p>
 </template>
 
 <script>
+import { comment } from 'postcss'
 import { defineComponent, ref } from 'vue'
 
 export default defineComponent ({
   name: 'PageIndex',
-  emits: ['editWidget'],
+  emits: ['mounted'],
   props: {
     toolbarOptions: {
       type: Object
     },
 
     pageWidgets: {
+      type: Object,
+      required: true
+    },
+
+    pageMetaData: {
+      type: Object,
+    },
+
+    virtualCanvas: {
       type: Object,
       required: true
     },
@@ -43,27 +61,53 @@ export default defineComponent ({
 
     updateDragStatus: {
       type: Function
+    },
+
+    resetDragStatus: {
+      type: Function
+    },
+
+    addWidget: {
+      type: Function
+    },
+
+    RESIZE_CURSOR_THRESHOLD: {
+      type: Function
+    },
+
+    userStyling: {
+      type: Object
+    },
+
+    restoreUserStyling: {
+      type: Function
+    },
+
+    tooltip: {
+      type: Object
+    },
+
+    pixelsToInt: {
+      type: Function
+    },
+
+    drawCommentLine: {
+      type: Function
     }
   },
   setup (props) {
-    const pageContent = ref(null)
-    const gridContainer = ref(null)
-    const numGridColumns = ref(0)
-    const numGridRows = ref(null)
-    const gridStyleSheet = ref(null)
-    const SNAP_THRESHOLD = 16
-    const RESIZE_CURSOR_THRESHOLD = (widget) => {
-      return {
-        x: Math.max(0.1 * widget.offsetWidth, 6),
-        y: Math.max(0.1 * widget.offsetHeight, 6)
+    const gridMetaData = ref({
+      SNAP_THRESHOLD: 16,
+      gridContainer: null,
+      gridStyleSheet: null,
+      numGridColumns: 0,
+      numGridRows: 0,
+      gridElements: {
+        rows: [],
+        columns: [],
       }
-    }
-
-    const gridElements = ref({
-      rows: [],
-      columns: [],
-
     })
+
     const selectedGrid = ref({
       row: null,
       column: null,
@@ -71,155 +115,242 @@ export default defineComponent ({
       horizontalPlacement: null
     })
 
-
-    const tooltip = ref(null)
-
-
-    // Store user-inputted styles temporarily when overriding
-    const userStyling = ref({})
-
     return {
       props,
-      pageContent,
-      gridContainer,
-      numGridColumns,
-      numGridRows,
-      gridStyleSheet,
-      SNAP_THRESHOLD,
-      RESIZE_CURSOR_THRESHOLD,
-      gridElements,
+      gridMetaData,
       selectedGrid,
-      tooltip,
-      userStyling
     }
   },
+
   computed: {
     pageHeight () {
-      return this.pageContent? this.pageContent.clientHeight : 0
+      return this.props.pageMetaData.pageContainer? this.props.pageMetaData.pageContainer.clientHeight : 0
     },
+
+    commentPointRadius () {
+      return this.pageMetaData.commentPointRadius
+    },
+
+    numGridColumns () {
+      return this.gridMetaData.numGridColumns
+    },
+
+    numGridRows () {
+      return this.gridMetaData.numGridRows
+    }
   },
+
   methods: {
     onDragStart (e) {
-      const x = e.offsetX
-      const y = e.offsetY
-      const resizeCursorThreshold = this.RESIZE_CURSOR_THRESHOLD(e.target)
+      if (e.target.classList.contains('start-point') || e.target.classList.contains('end-point')) {
+        var img = document.createElement("img");   
+        img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-      let cursorThresholdPlacement = {}
-      if (x < resizeCursorThreshold.x) {
-        cursorThresholdPlacement.horizontal = 'left'
-      } else if (x > e.target.offsetWidth - resizeCursorThreshold.x) {
-        cursorThresholdPlacement.horizontal = 'right'
-      }
-
-      if (y < resizeCursorThreshold.y) {
-        cursorThresholdPlacement.vertical = 'top'
-      } else if (y > e.target.offsetHeight - resizeCursorThreshold.y) {
-        cursorThresholdPlacement.vertical = 'bottom'
-      }
-
-      if (cursorThresholdPlacement.horizontal && cursorThresholdPlacement.vertical) {
-        // Resize widget
-        e.stopPropagation()
-        e.preventDefault()
-        e.target.classList.add('resizing')
-        // convert to boundingrect
-        this.props.updateDragStatus({
-          dragType: 'resizing',
-          draggedWidget: e.target,
-          cursorHorizontalPlacement: cursorThresholdPlacement.horizontal,
-          cursorVerticalPlacement: cursorThresholdPlacement.vertical,
-          initialTop:  parseInt(e.target.style.top),
-          initialLeft: parseInt(e.target.style.left),
-          initialAbsoluteCursorX: e.clientX,
-          initialAbsoluteCursorY: e.clientY,
-          initialWidth: e.target.offsetWidth,
-          initialHeight: e.target.offsetHeight,
-          edgeDistance: null
-        })
+        e.dataTransfer.setDragImage(img, 0, 0);
+        e.target.classList.add('dragging')
+        
+        if (e.target.classList.contains('start-point')) {
+          this.props.updateDragStatus({
+              dragType: 'comment-line',
+              draggedWidget: e.target,
+              target: 'start',
+              id: e.target.dataset.id
+          })
+        } else if (e.target.classList.contains('end-point')) {
+          this.props.updateDragStatus({
+              dragType: 'comment-line',
+              draggedWidget: e.target,
+              target: 'end',
+              id: e.target.dataset.id
+          })
+        }
       } else {
-        // Drag and move widget
-        e.dataTransfer.setData('id', e.target.dataset.widgetId)
-        e.dataTransfer.setData('width', e.target.offsetWidth)
-        e.dataTransfer.setData('height', e.target.offsetHeight)
-        e.dataTransfer.setData('moving', true)
+        // resize or move widget
+        const x = e.offsetX
+        const y = e.offsetY
+        const resizeCursorThreshold = this.props.RESIZE_CURSOR_THRESHOLD(e.target)
 
-        e.target.classList.add('moving')
-        this.userStyling.zIndex = e.target.style.zIndex.length > 0 ? e.target.style.zIndex : 'auto'
-        e.target.style.zIndex = 9999
-        e.dataTransfer.dropEffect = 'move'
-        this.props.updateDragStatus({
-          dragType: 'moving',
-          draggedWidget: e.target,
-          edgeDistance: {
-            top: e.offsetY,
-            bottom: e.target.offsetHeight - e.offsetY,
-            left: e.offsetX, 
-            right: e.target.offsetWidth - e.offsetX
+        let cursorThresholdPlacement = {}
+        if (x < resizeCursorThreshold.x) {
+          cursorThresholdPlacement.horizontal = 'left'
+        } else if (x > e.target.offsetWidth - resizeCursorThreshold.x) {
+          cursorThresholdPlacement.horizontal = 'right'
+        }
+
+        if (y < resizeCursorThreshold.y) {
+          cursorThresholdPlacement.vertical = 'top'
+        } else if (y > e.target.offsetHeight - resizeCursorThreshold.y) {
+          cursorThresholdPlacement.vertical = 'bottom'
+        }
+
+        if (cursorThresholdPlacement.horizontal && cursorThresholdPlacement.vertical) {
+          // Resize widget
+          e.stopPropagation()
+          e.preventDefault()
+          e.target.classList.add('resizing')
+          // convert to boundingrect
+
+          const dragData = {
+            dragType: 'resizing',
+            draggedWidget: e.target,
+            cursorHorizontalPlacement: cursorThresholdPlacement.horizontal,
+            cursorVerticalPlacement: cursorThresholdPlacement.vertical,
+            initialTop:  parseInt(e.target.style.top),
+            initialLeft: parseInt(e.target.style.left),
+            initialClientX: e.clientX,
+            initialClientY: e.clientY,
+            initialWidth: e.target.offsetWidth,
+            initialHeight: e.target.offsetHeight,
+            edgeDistance: null
           }
-        })
+          if (e.target.parentNode.classList.contains('comment')) {
+            dragData.startPoint = this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint
+            dragData.startPointInitialX = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left)
+            dragData.startPointInitialY = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top)
+          } 
+          this.props.updateDragStatus(dragData)
+        } else {
+          // Drag and move widget
+          e.dataTransfer.setData('id', e.target.dataset.widgetId)
+          e.dataTransfer.setData('width', e.target.offsetWidth)
+          e.dataTransfer.setData('height', e.target.offsetHeight)
+          e.dataTransfer.setData('moving', true)
+
+          e.target.classList.add('moving')
+          this.props.userStyling.zIndex = e.target.style.zIndex.length > 0 ? e.target.style.zIndex : 'auto'
+          e.target.style.zIndex = 9999
+          e.dataTransfer.dropEffect = 'move'
+
+          const dragData = {
+            dragType: 'moving',
+            draggedWidget: e.target,
+            edgeDistance: {
+              top: e.offsetY,
+              bottom: e.target.offsetHeight - e.offsetY,
+              left: e.offsetX, 
+              right: e.target.offsetWidth - e.offsetX
+            }
+          }
+
+          if (e.target.parentNode.classList.contains('comment')) {
+            dragData.startPoint = this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint
+            dragData.startPointInitialX = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left)
+            dragData.startPointInitialY = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top)
+            dragData.widgetTop = this.props.pixelsToInt(e.target.style.top)
+            dragData.widgetLeft = this.props.pixelsToInt(e.target.style.left)
+            dragData.edgeDistance = {
+              // calculate distance from cursor to widget borders
+            }
+          } 
+
+          this.props.updateDragStatus(dragData)
+        }
       }
+      
 
     },
 
     onDragOver (e) {
       e.preventDefault()
-      // If showing grid AND holding alt key, display and snap dragged elements to grid lines
-      if (this.props.toolbarOptions.showGrid && e.shiftKey &&
-      !e.target.classList.contains('widget') && 
-      (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving')) {
-        const gridRect = e.currentTarget.getBoundingClientRect()
-        const edgeDistance = this.props.dragStatus.edgeDistance
-        const cursorRect = {
-          top: e.clientY - edgeDistance.top,
-          bottom: e.clientY + edgeDistance.bottom,
-          left: e.clientX - edgeDistance.left,
-          right: e.clientX + edgeDistance.right
-        }
+      const dragType = this.props.dragStatus.dragType
+      const canvasOffsetLeft = e.clientX - this.props.pageMetaData.pageContainer.offsetLeft
+      const canvasOffsetTop = e.clientY - this.props.pageMetaData.pageContainer.offsetTop
+
+      if (dragType === 'comment-line') {
+        // Move dragged start/end point and line
+        const commentWidget = this.props.pageWidgets.widgets[this.props.dragStatus.id]
+        const widget = commentWidget.rootElement.querySelector('.widget')
         
-        const gridSquareWidth = e.currentTarget.scrollWidth / this.numGridColumns
-        const gridSquareHeight = e.currentTarget.scrollHeight / this.numGridRows;
+        const [commentLeft, commentTop] = [commentWidget.rootElement.offsetLeft, commentWidget.rootElement.offsetTop]
+        const [widgetLeft, widgetTop] = [widget.offsetLeft, widget.offsetTop]
+        const cursorOffsetLeft = canvasOffsetLeft - commentLeft
+        const cursorOffsetTop = canvasOffsetTop - commentTop
+        
 
-        const leftDistance = (cursorRect.left - gridRect.left) / gridSquareWidth
-        const leftColumn = Math.round(leftDistance)
+        switch (this.props.dragStatus.target) {
+          case 'start':
+            const cursorAbsoluteX = Math.min(Math.max(cursorOffsetLeft - widgetLeft - this.commentPointRadius, 0), widget.offsetWidth)
+            const cursorAbsoluteY = Math.min(Math.max(cursorOffsetTop - widgetTop - this.commentPointRadius, 0), widget.offsetHeight)
+            // Confine start and end points to being inside the widget
+            commentWidget.startPoint.style.left = `${cursorAbsoluteX}px`
+            commentWidget.startPoint.style.top = `${cursorAbsoluteY}px`
 
-        const rightDistance = (cursorRect.right - gridRect.left) / gridSquareWidth
-        const rightColumn = Math.round(rightDistance)
+            this.props.drawCommentLine(this.props.dragStatus.id, {startPoint: [commentLeft + widgetLeft + cursorAbsoluteX, commentTop + widgetTop + cursorAbsoluteY]})
+            break
+          case 'end':
+            commentWidget.endPoint.style.left = `${cursorOffsetLeft - this.commentPointRadius}px`
+            commentWidget.endPoint.style.top = `${cursorOffsetTop - this.commentPointRadius}px`
+            this.props.drawCommentLine(this.props.dragStatus.id, {endPoint: [canvasOffsetLeft, canvasOffsetTop]})
+            break
+        }
+      } else if (dragType === 'adding' || dragType === 'moving') {
+        const widget = this.props.dragStatus.draggedWidget
 
-        const topDistance = (cursorRect.top - gridRect.top) / gridSquareHeight
-        const topRow = Math.round(topDistance)
+        if (this.props.toolbarOptions.showGrid && e.shiftKey &&
+          !e.target.classList.contains('widget')) {
+          // If showing grid AND holding alt key, display and snap dragged elements to grid lines
+          const gridRect = e.currentTarget.getBoundingClientRect()
+          const edgeDistance = this.props.dragStatus.edgeDistance
+          const cursorRect = {
+            top: e.clientY - edgeDistance.top,
+            bottom: e.clientY + edgeDistance.bottom,
+            left: e.clientX - edgeDistance.left,
+            right: e.clientX + edgeDistance.right
+          }
+          
+          const gridSquareWidth = e.currentTarget.scrollWidth / this.gridMetaData.numGridColumns
+          const gridSquareHeight = e.currentTarget.scrollHeight / this.gridMetaData.numGridRows;
 
-        const bottomDistance = (cursorRect.bottom- gridRect.top) / gridSquareHeight
-        const bottomRow = Math.round(bottomDistance)
+          const leftDistance = (cursorRect.left - gridRect.left) / gridSquareWidth
+          const leftColumn = Math.round(leftDistance)
 
-        let nearestColumn = [0, "top"]
-        let nearestRow = [0, "left"]
-        let columnDistance = 1
-        let rowDistance = 1
+          const rightDistance = (cursorRect.right - gridRect.left) / gridSquareWidth
+          const rightColumn = Math.round(rightDistance)
 
-        if (Math.abs(rightDistance - rightColumn) < Math.abs(leftDistance - leftColumn)) {
-          nearestColumn = [rightColumn, "right"]
-          columnDistance = Math.abs(rightDistance - rightColumn)
-        } else {
-          nearestColumn = [leftColumn, "left"]
-          columnDistance = Math.abs(leftDistance - leftColumn)
+          const topDistance = (cursorRect.top - gridRect.top) / gridSquareHeight
+          const topRow = Math.round(topDistance)
+
+          const bottomDistance = (cursorRect.bottom- gridRect.top) / gridSquareHeight
+          const bottomRow = Math.round(bottomDistance)
+
+          let nearestColumn = [0, "top"]
+          let nearestRow = [0, "left"]
+          let columnDistance = 1
+          let rowDistance = 1
+
+          if (Math.abs(rightDistance - rightColumn) < Math.abs(leftDistance - leftColumn)) {
+            nearestColumn = [rightColumn, "right"]
+            columnDistance = Math.abs(rightDistance - rightColumn)
+          } else {
+            nearestColumn = [leftColumn, "left"]
+            columnDistance = Math.abs(leftDistance - leftColumn)
+          }
+
+          if (Math.abs(bottomDistance - bottomRow) < Math.abs(topDistance - topRow)) {
+            nearestRow = [bottomRow, "bottom"]
+            rowDistance = Math.abs(bottomDistance - bottomRow)
+          } else {
+            nearestRow = [topRow, "top"]
+            rowDistance = Math.abs(topDistance - topRow)
+          } 
+
+
+          // Snap to nearest gridlines, if close enough
+          if (true) {
+            if (columnDistance * gridSquareWidth < this.gridMetaData.SNAP_THRESHOLD && rowDistance * gridSquareHeight < this.gridMetaData.SNAP_THRESHOLD) {
+              this.selectGrid(nearestColumn, nearestRow) 
+            } else {
+              this.clearSelectedGrid()
+            }
+          }
         }
 
-        if (Math.abs(bottomDistance - bottomRow) < Math.abs(topDistance - topRow)) {
-          nearestRow = [bottomRow, "bottom"]
-          rowDistance = Math.abs(bottomDistance - bottomRow)
-        } else {
-          nearestRow = [topRow, "top"]
-          rowDistance = Math.abs(topDistance - topRow)
-        } 
-
-
-        // Snap to nearest gridlines, if close enough
-        if (true) {
-          if (columnDistance * gridSquareWidth < this.SNAP_THRESHOLD && rowDistance * gridSquareHeight < this.SNAP_THRESHOLD) {
-            this.selectGrid(nearestColumn, nearestRow) 
-          } else {
-            this.clearSelectedGrid()
-          }
+        if (this.props.dragStatus.startPoint && dragType === 'moving') {
+          const [lineX, lineY] = [
+            canvasOffsetLeft - this.props.dragStatus.edgeDistance.left + this.props.dragStatus.startPointInitialX + this.commentPointRadius,
+            canvasOffsetTop - this.props.dragStatus.edgeDistance.top + this.props.dragStatus.startPointInitialY + this.commentPointRadius
+          ]
+          this.props.drawCommentLine(widget.dataset.widgetId, {startPoint: [lineX, lineY]})
         }
       } 
     },
@@ -229,15 +360,13 @@ export default defineComponent ({
       this.clearSelectedGrid()
     },
 
-    onDragEnd (e) {
-      this.restoreUserStyling(this.props.dragStatus.draggedWidget)
-      this.resetDragStatus()
-    },
 
     onDragDrop (e) {
       e.preventDefault()
-      if (this.props.dragStatus.dragType !== 'resizing') {
-        const dropLocation = e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id') ? e.target : this.gridContainer
+      if (this.props.dragStatus.dragType === 'comment-line') {
+        e.target.classList.remove('dragging')
+      } else if (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving') {
+        const dropLocation = e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id') ? e.target : this.gridMetaData.gridContainer
 
         const gridRect = dropLocation.getBoundingClientRect()
 
@@ -245,9 +374,9 @@ export default defineComponent ({
         
         // If showing grid AND holding alt key, drop element at nearest grid line, if possible
         if (this.props.toolbarOptions.showGrid && e.shiftKey &&
-          dropLocation === this.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
-          const gridWidth = (dropLocation.scrollWidth / this.numGridColumns)
-          const gridHeight = (dropLocation.scrollHeight / this.numGridRows)
+          dropLocation === this.gridMetaData.gridContainer && this.selectedGrid.row !== null && this.selectedGrid.column !== null ) {
+          const gridWidth = (dropLocation.scrollWidth / this.gridMetaData.numGridColumns)
+          const gridHeight = (dropLocation.scrollHeight / this.gridMetaData.numGridRows)
 
           const isRight = this.selectedGrid.horizontalPlacement === 'right' ? 1 : 0
           const isBottom = this.selectedGrid.verticalPlacement === 'bottom' ? 1 : 0
@@ -257,7 +386,6 @@ export default defineComponent ({
             x: this.selectedGrid.column * gridWidth - isRight * this.dragStatus.draggedWidget.offsetWidth,
             y: this.selectedGrid.row * gridHeight - isBottom * this.dragStatus.draggedWidget.offsetHeight
           }
-
         } else {
           gridPlacement = {
             placement:'absolute',
@@ -266,153 +394,131 @@ export default defineComponent ({
           }
         }
     
+        
         if (e.dataTransfer.getData('moving')) {
-          this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
+          this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement, this.dragStatus.comment)
         } else {
-          this.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
+          this.props.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement, this.dragStatus.comment)
         }
       }
       
       this.clearSelectedGrid()
-      this.restoreUserStyling(this.props.dragStatus.draggedWidget)
-      this.resetDragStatus()
+      this.props.restoreUserStyling(this.props.dragStatus.draggedWidget)
     },
 
     onMouseMove (e) {
-      e.preventDefault()
       if (this.props.dragStatus.dragType === 'resizing') {
-        const deltaX = e.clientX - this.props.dragStatus.initialAbsoluteCursorX
-        const deltaY = -(e.clientY - this.props.dragStatus.initialAbsoluteCursorY)
+        e.preventDefault()
+        let redraw = false
+        const widget = this.props.dragStatus.draggedWidget
+        const widgetId = widget.dataset.widgetId
+        const startPoint = this.props.dragStatus.startPoint
+        const [startPointInitialX, startPointInitialY] = [this.props.dragStatus.startPointInitialX, this.props.dragStatus.startPointInitialY]
+
+        const [initialClientX, initialClientY] = [this.props.dragStatus.initialClientX, this.props.dragStatus.initialClientY]
+        const deltaX = e.clientX - initialClientX
+        const deltaY = -(e.clientY - initialClientY)
 
         if (this.props.dragStatus.cursorHorizontalPlacement === 'left') {
-          this.props.dragStatus.draggedWidget.style.width = `${this.props.dragStatus.initialWidth - deltaX}px`
+          widget.style.width = `${this.props.dragStatus.initialWidth - deltaX}px`
           if (deltaX < this.props.dragStatus.initialWidth) {
-            this.props.dragStatus.draggedWidget.style.left = `${this.props.dragStatus.initialLeft + deltaX}px`
+            widget.style.left = `${this.props.dragStatus.initialLeft + deltaX}px`
           }
+
+          if (startPoint) {
+            let newStartPointX = startPointInitialX - deltaX
+            if (newStartPointX < -1 * this.commentPointRadius) {
+              newStartPointX = -1 * this.commentPointRadius
+              redraw = true
+            }
+            startPoint.style.left = `${newStartPointX}px`
+          }
+  
         } else {
-          this.props.dragStatus.draggedWidget.style.width = `${this.props.dragStatus.initialWidth + deltaX}px`
+          const newWidth = Math.max(this.props.dragStatus.initialWidth + deltaX, 8)
+          widget.style.width = `${newWidth}px`
+
+          if (startPoint && deltaX < 0) {
+            if (this.props.pixelsToInt(startPoint.style.left) - this.commentPointRadius > newWidth) {
+              startPoint.style.left = `${newWidth - this.commentPointRadius}px`
+              redraw = true
+            }
+          }
         }
 
         if (this.props.dragStatus.cursorVerticalPlacement === 'top') {
-          this.props.dragStatus.draggedWidget.style.height = `${this.props.dragStatus.initialHeight + deltaY}px`
+          widget.style.height = `${this.props.dragStatus.initialHeight + deltaY}px`
           
           if (deltaY > -1 * this.props.dragStatus.initialHeight) {
-            this.props.dragStatus.draggedWidget.style.top = `${this.props.dragStatus.initialTop - deltaY}px`
+            widget.style.top = `${this.props.dragStatus.initialTop - deltaY}px`
           }
+
+          if (startPoint) {
+            let newStartPointY = startPointInitialY + deltaY
+
+            if (newStartPointY < -1 * this.commentPointRadius) {
+              newStartPointY = -1 * this.commentPointRadius
+              redraw = true
+            }
+              
+            startPoint.style.top = `${newStartPointY}px`
+          }
+
         } else {
-          this.props.dragStatus.draggedWidget.style.height = `${this.props.dragStatus.initialHeight - deltaY}px`
+          const newHeight = Math.max(this.props.dragStatus.initialHeight - deltaY, 8)
+          widget.style.height = `${newHeight}px`
+
+          if (startPoint && deltaY > 0) {
+            if (this.props.pixelsToInt(startPoint.style.top) - this.commentPointRadius > newHeight) {
+              startPoint.style.top = `${newHeight - this.commentPointRadius}px`
+              redraw = true
+            }
+          }
         }
+
+        if (startPoint && redraw) {
+          const [lineX, lineY] = [
+            startPoint.offsetLeft + widget.offsetLeft + widget.parentNode.offsetLeft + this.commentPointRadius,
+            startPoint.offsetTop + widget.offsetTop + widget.parentNode.offsetTop + this.commentPointRadius
+          ]
+          this.props.drawCommentLine(widgetId, {startPoint: [lineX, lineY]})
+        }
+
+        this.getVirtualWidget(widgetId).attributes.style = this.props.dragStatus.draggedWidget.getAttribute('style')
       }
     },
 
     onMouseUp (e) {
       e.preventDefault()
-      this.resetDragStatus()
-    },
-  
-    addWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
-      const currentWidgetId = this.props.pageWidgets.widgetId
-      // Can experiment with transferring innerHTML instead if too slow
-      const newWidget = document.getElementById(widgetId).cloneNode(true)
-      newWidget.id = `widget-${currentWidgetId}`
-      newWidget.dataset.widgetId=currentWidgetId
-      newWidget.classList.add('widget')
-
-      newWidget.setAttribute('draggable', 'true')
-      newWidget.addEventListener('dragover', (event) => {
-        if (this.props.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset?.widgetId) {
-          event.currentTarget.classList.add('green')
-        }
-      })
-
-      newWidget.addEventListener('dragstart', (event) => {
-        if (event.target !== event.currentTarget) {
-          event.currentTarget.classList.add('green')
-        }
-      })
-
-      newWidget.addEventListener('dragleave', (event) => {
-        event.currentTarget.classList.remove('green')
-      })
-
-      newWidget.addEventListener('drop', (event) => {
-        event.currentTarget.classList.remove('green')
-      })
-
-      newWidget.addEventListener("dblclick", (event) => {
-        event.stopPropagation()
-        this.tooltip.classList.remove('visible')
-        this.editWidget(currentWidgetId)
-      });
-
-      // change user cursor based on mouse location
-      newWidget.addEventListener("mousemove", (event) => {
-        const x = event.offsetX
-        const y = event.offsetY
-        const resizeCursorThreshold = this.RESIZE_CURSOR_THRESHOLD(newWidget)
-
-        this.userStyling.cursor ||= newWidget.style.cursor.length > 0 ? newWidget.style.cursor : 'pointer'
-        // change cursor based on which corner user is hovering over
-        if (x < resizeCursorThreshold.x && y < resizeCursorThreshold.y) {
-          newWidget.style.cursor = 'nw-resize'
-        } else if (x < resizeCursorThreshold.x && y > newWidget.offsetHeight - resizeCursorThreshold.y) {
-          newWidget.style.cursor = 'sw-resize'
-        } else if (x > newWidget.offsetWidth - resizeCursorThreshold.x && y < resizeCursorThreshold.y) {
-          newWidget.style.cursor = 'ne-resize'
-        } else if (x > newWidget.offsetWidth - resizeCursorThreshold.x && y > newWidget.offsetHeight - resizeCursorThreshold.y) {
-          newWidget.style.cursor = 'se-resize'
-        } else {
-          newWidget.style.cursor = this.userStyling.cursor
-        }
-
-        if (this.props.dragStatus.dragType === 'resizing' && this.props.dragStatus.draggedWidget !== event.currentTarget) {
-            event.currentTarget.classList.add('green')
-        }
-      })
-
-      newWidget.addEventListener("mouseup", (event) => {
-        event.currentTarget.classList.remove('green')
-        this.restoreUserStyling(newWidget)
-      })
-      
-      if (placement === 'absolute') {
-        newWidget.style.position = 'absolute'
-        newWidget.style.top = `${y}px`
-        newWidget.style.left = `${x}px`
-      }
-      // if (pageNode === this.gridContainer) {
-      //   if (!newWidget.style.gridColumn) {
-      //     newWidget.style.gridColumn = `${columnNum + 1} / span 1`
-      //   }
-
-      //   if (!newWidget.style.gridRow) {
-      //     newWidget.style.gridRow = `${rowNum + 1} / span 1`
-      //   }
-      // }
-
-      this.props.pageWidgets.widgets[currentWidgetId] = newWidget
-      this.props.pageWidgets.widgetId += 1
-      pageNode.appendChild(newWidget)
-    },
-
-    editWidget (widgetId) {
-      this.$emit('editWidget',{ 
-        'widgetElement': this.props.pageWidgets.widgets[widgetId]
-      })
+      this.props.resetDragStatus()
     },
 
     moveWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
       // Can experiment with transferring innerHTML instead if too slow
       // Should just grab widget from pagewidgets.widgets by widget ID, instead of using element ID
-      const displacedWidget = this.props.pageWidgets.widgets[widgetId]
-      // if (pageNode === this.gridContainer) {
+      const displacedElement = this.props.pageWidgets.widgets[widgetId]
+      const displacedWidget = displacedElement.rootElement
+      // if (pageNode === this.gridMetaData.gridContainer) {
       //   displacedWidget.style.gridColumn = `${columnNum + 1} / span 1`
       //   displacedWidget.style.gridRow = `${rowNum + 1} / span 1`
       // } 
       if (placement === 'absolute') {
         displacedWidget.style.position = 'absolute'
-        displacedWidget.style.top = `${y}px`
-        displacedWidget.style.left = `${x}px`
+
+        if (displacedElement.startPoint) {
+          // If widget is a comment, offset placement relative to widget location in comment
+          console.log(this.props.dragStatus.edgeDistance)
+          console.log(this.props.dragStatus.widgetLeft)
+          console.log(this.props.dragStatus.widgetTop)
+          displacedWidget.style.top = `${y + this.props.dragStatus.widgetTop - this.props.dragStatus.edgeDistance.top}px`
+          displacedWidget.style.left = `${x + this.props.dragStatus.widgetLeft - this.props.dragStatus.edgeDistance.left}px`
+        } else {
+          displacedWidget.style.top = `${y}px`
+          displacedWidget.style.left = `${x}px`
+        }
+
+
+        this.getVirtualWidget(widgetId).attributes.style = displacedWidget.getAttribute('style')
       }
 
       if (pageNode !== displacedWidget && pageNode !== displacedWidget.parentNode) {
@@ -427,18 +533,20 @@ export default defineComponent ({
       const selectedRow = this.selectedGrid.row
       const selectedColumn = this.selectedGrid.column
 
-      if (rowNum !== selectedRow || columnNum !== selectedColumn) {
+      const gridElements = this.pageMetaData.gridElements
 
+      if (rowNum !== selectedRow || columnNum !== selectedColumn) {
+        
         if (selectedRow !== null) {
-          this.gridElements.rows[selectedRow].classList.remove('red')
+          gridElements.rows[selectedRow].classList.remove('red')
         }
 
         if (selectedColumn !== null) {
-          this.gridElements.columns[selectedColumn].classList.remove('red')
+          gridElements.columns[selectedColumn].classList.remove('red')
         }
 
-        this.gridElements.rows[rowNum].classList.add('red')
-        this.gridElements.columns[columnNum].classList.add('red')
+        gridElements.rows[rowNum].classList.add('red')
+        gridElements.columns[columnNum].classList.add('red')
       }
 
       this.selectedGrid = {
@@ -453,12 +561,14 @@ export default defineComponent ({
       const selectedRow = this.selectedGrid.row
       const selectedColumn = this.selectedGrid.column
 
+      const gridElements = this.pageMetaData.gridElements
+
       if (selectedRow !== null) {
-        this.gridElements.rows[selectedRow].classList.remove('red')
+        gridElements.rows[selectedRow].classList.remove('red')
       }
 
       if (selectedColumn !== null) {
-        this.gridElements.columns[selectedColumn].classList.remove('red')
+        gridElements.columns[selectedColumn].classList.remove('red')
       }
 
       this.selectedGrid = {
@@ -469,75 +579,67 @@ export default defineComponent ({
       }
     },
 
-    restoreUserStyling (widget) {
-      Object.entries(this.userStyling).forEach(([originalStyle, value]) => {
-        widget.style[originalStyle] = value
-      })
-
-      this.userStyling = {}
+    getVirtualWidget (widgetId) {
+      return eval(`this.props.virtualCanvas.elements${this.props.virtualCanvas.idMap[widgetId]}`)
     },
-
-    resetDragStatus () {
-      this.props.dragStatus.draggedWidget?.classList.remove('resizing')
-      this.props.dragStatus.draggedWidget?.classList.remove('moving')
-
-      this.props.updateDragStatus({
-        dragType: null,
-        draggedWidget: null,
-        edgeDistance: null,
-      })
-    }
   },
   mounted () {
-    this.pageContent= document.getElementById("page-container")
-    this.gridContainer = document.getElementById("grid-container")
-    
-    this.numGridColumns = 8
-    this.numGridRows = Math.ceil(this.pageHeight / 200)
+    this.props.pageMetaData.pageContainer = document.getElementById("page-container")
 
+    this.gridMetaData.gridContainer = document.getElementById("grid-container")
+    this.gridMetaData.gridStyleSheet = new CSSStyleSheet()
+    this.gridMetaData.numGridColumns = 8
+    this.gridMetaData.numGridRows = Math.ceil(this.pageHeight / 200)
+
+  
     const styleSheet = new CSSStyleSheet()
 
-    this.gridStyleSheet = styleSheet
-    styleSheet.insertRule(`#grid-container .column { grid-row: 1 / span ${this.numGridRows} }`, styleSheet.cssRules.length);
+    styleSheet.insertRule(`#grid-container .column { grid-row: 1 / span ${this.gridMetaData.numGridRows} }`, styleSheet.cssRules.length);
     document.adoptedStyleSheets = [styleSheet]
+    this.gridMetaData.gridStyleSheet = styleSheet
 
     // Add tooltip listener
-    this.tooltip = document.getElementById("page-tooltip")
     let timer
     const showTooltip = (event) => {
       if (!this.props.dragStatus.dragType) {
         const widget = event.target.closest(".widget")
         if (widget) {
-          this.tooltip.classList.add("visible")
-          this.tooltip.textContent = `Double-click to edit ${widget.dataset.title}`
-          this.tooltip.style.left = `${event.x}px`
-          this.tooltip.style.top = `${event.y}px`
+          this.props.tooltip.classList.add("visible")
+          this.props.tooltip.textContent = `Double-click to edit ${widget.dataset.title}`
+          this.props.tooltip.style.left = `${event.x}px`
+          this.props.tooltip.style.top = `${event.y}px`
         }
       }
     }
 
-    this.pageContent.addEventListener("mousemove", (event) => {
-      this.tooltip.classList.remove("visible")
+    this.props.pageMetaData.pageContainer.addEventListener("mousemove", (event) => {
+      this.props.tooltip.classList.remove("visible")
       clearTimeout(timer)
       timer = setTimeout(() => showTooltip(event), 1500)
     })
+
+    this.$emit('mounted', {})
   },
   watch: {
     numGridColumns(newValue, oldValue) {
       this.$nextTick(() => {
+        const stylesheet = this.gridMetaData.gridStyleSheet
+
         document.querySelectorAll('#grid-container .column').forEach((column, index) => {
-          this.gridStyleSheet.insertRule(`#grid-container .col-start-${index + 1} { grid-column-start: ${index + 1} }`, this.gridStyleSheet.cssRules.length);
-          this.gridStyleSheet.insertRule(`#grid-container .col-end-${index + 1} { grid-column-end: ${index + 1} }`, this.gridStyleSheet.cssRules.length);
-          this.gridElements.columns.push(column)
+          stylesheet.insertRule(`#grid-container .col-start-${index + 1} { grid-column-start: ${index + 1} }`, stylesheet.cssRules.length);
+          stylesheet.insertRule(`#grid-container .col-end-${index + 1} { grid-column-end: ${index + 1} }`, stylesheet.cssRules.length);
+          this.gridMetaData.gridElements.columns.push(column)
         })
       })
     },
     numGridRows(newValue, oldValue) {
+      const stylesheet = this.gridMetaData.gridStyleSheet
+
       this.$nextTick(() => {
         document.querySelectorAll('#grid-container .row').forEach((row, index) => {
-          this.gridStyleSheet.insertRule(`#grid-container .row-start-${index + 1} { grid-row-start: ${index + 1} }`, this.gridStyleSheet.cssRules.length);
-          this.gridStyleSheet.insertRule(`#grid-container .row-end-${index + 1} { grid-row-end: ${index + 1} }`, this.gridStyleSheet.cssRules.length);
-          this.gridElements.rows.push(row)
+          stylesheet.insertRule(`#grid-container .row-start-${index + 1} { grid-row-start: ${index + 1} }`, stylesheet.cssRules.length);
+          stylesheet.insertRule(`#grid-container .row-end-${index + 1} { grid-row-end: ${index + 1} }`, stylesheet.cssRules.length);
+          this.gridMetaData.gridElements.rows.push(row)
         })
       })
     }

@@ -1,30 +1,28 @@
-[
-  {
-    "title": "FakeWidget",
+{
+  "FakeWidget": {
+    "is_group": false,
     "caption": "Fake widget example",
     "icon": "school",
     "html": "container.html",
     "settings": []
   },
-  {
-    "groupName": "Containers",
+  "Containers": {
+    "is_group": true,
     "caption": "Group of containers",
     "icon": "school",
-    "widgets" : [
-      {
-        "title": "Div",
+    "widgets" : {
+      "Div": {
         "caption": "Generic container for other widgets",
         "icon": "school",
         "html": "test.html",
         "settings": []
       },
-      {
-        "title": "Div2",
+      "Div2": {
         "caption": "Generic container2 for other widgets",
         "icon": "school",
         "html": "test2.html",
         "settings": []
       }
-    ]
+    }
   }
-]
+}

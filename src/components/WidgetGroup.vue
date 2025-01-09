@@ -1,6 +1,6 @@
 <template>
   <q-expansion-item
-      :id="this.props.groupName"
+      :id="this.props.name"
       clickable
       expand-separator
       :content-inset-level="0.25"
@@ -9,17 +9,22 @@
       <div class="label row items-center no-wrap">
         <q-icon avatar v-if="this.props.icon" left :name="this.props.icon" />
         <div>
-          <h4>{{ this.props.groupName }}</h4>
+          <h4>{{ this.props.name }}</h4>
           <p caption>{{ this.props.caption }}</p>
         </div>
       </div>
     </template>
     <q-list>
       <WidgetEditor
-        v-for="widget in this.props.widgets"
-        :key="widget.title"
+        v-for="(widget, name) in this.props.widgets"
+        :key="name"
+        :name="name"
         v-bind="widget"
+        :dragStatus="this.dragStatus"
         :updateDragStatus="this.updateDragStatus"
+        :resetDragStatus="this.resetDragStatus"
+        :toolbarOptions="this.props.toolbarOptions"
+        :pageMetaData="this.props.pageMetaData"
       />
     </q-list>
   </q-expansion-item>
@@ -30,7 +35,7 @@ import WidgetEditor from '../components/WidgetEditor.vue'
 
 export default {
   props:  {
-    groupName: {
+    name: {
       type: String,
       required: true
     },
@@ -46,12 +51,28 @@ export default {
     },
 
     widgets: {
-      type: Array,
-      default: new Array()
+      type: Object,
+      default: new Object()
+    },
+
+    dragStatus: {
+      type: Object
     },
 
     updateDragStatus: {
       type: Function
+    },
+
+    resetDragStatus: {
+      type: Function
+    },
+
+    toolbarOptions: {
+      type: Object
+    },
+
+    pageMetaData: {
+      type: Object
     }
   },
   components: {

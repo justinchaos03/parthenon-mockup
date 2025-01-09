@@ -29,6 +29,14 @@
             hint="Update style for widget"
             :dense="true"
           />
+          <div class="text-editors">
+            <q-input
+              v-for="(element, index) in textElements"
+              :key="index"
+              :data-id="index"
+              v-model="element.innerHTML"
+            />
+          </div>
         </q-form>
         <div class="buttons">
           <q-btn label="Update Widget" type="submit" form="edit-widget-form" color="primary"/>
@@ -39,6 +47,7 @@
   </q-dialog>
 </template>
 <script>
+import { TouchSwipe } from 'quasar';
 import { ref } from 'vue';
 
 export default {
@@ -57,11 +66,13 @@ export default {
   setup (props) {
     const form = ref(null)
     const style = ref("")
+    const textElements = {}
 
     return {
       props,
       form,
-      style
+      style,
+      textElements
     }
   },
   methods: {
@@ -69,21 +80,34 @@ export default {
       this.$emit('submit', {
         'style': this.style
       })
+      this.props.widget.style = values.style
       this.closeEditWidgetForm()
     },
+
     deleteEditWidgetForm () {
       this.$emit('delete')
     },
+
     resetEditWidgetForm () {
       this.style = ""
     },
+
     closeEditWidgetForm () {
       this.$emit('close')
     }
-  }, 
+  },
   watch: {
-    'props.widget' (newWidget, oldWidget) {
-      this.style = newWidget.style.cssText
+    'props.widget' (newWidget) {
+      this.style = this.props.widget.style.cssText
+      
+      const textElementMapping = {}
+      const textElements = newWidget.querySelectorAll("p, span, a, h1, h2, h3, h4, h5, h6")
+      
+      if (textElements.length > 0) {
+        textElements.forEach((element, index) => textElementMapping[index] = element); 
+      }
+
+      this.textElements = textElementMapping
     }
   }
 }

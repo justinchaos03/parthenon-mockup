@@ -205,8 +205,10 @@ export default {
         const previewContainer = this.preview.offsetParent
         const previewRect = this.preview.getBoundingClientRect()
 
+        const imageTop = previewContainer.offsetHeight / 2
+        const imageLeft = previewContainer.offsetWidth / 2
         previewContainer.classList.add('dragging')
-        e.dataTransfer.setDragImage(previewContainer, previewContainer.offsetWidth / 2, previewContainer.offsetHeight / 2)
+        e.dataTransfer.setDragImage(previewContainer, imageLeft, imageTop)
         e.dataTransfer.setData('id', this.preview.id)
         e.dataTransfer.setData('width', this.preview.offsetWidth)
         e.dataTransfer.setData('height', this.preview.offsetHeight)
@@ -217,10 +219,10 @@ export default {
             comment: this.comment ? this.commentArrow : false,
             draggedWidget: this.preview,
             edgeDistance: {
-              top: 10,
-              bottom: previewRect.height -10,
-              left: 10,
-              right: previewRect.width - 10,
+              top: this.preview.offsetHeight / 2,
+              bottom: previewRect.height - this.preview.offsetHeight / 2,
+              left: this.preview.offsetWidth / 2,
+              right: previewRect.width - this.preview.offsetWidth / 2,
             }
         })
       }

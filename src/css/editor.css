@@ -14,19 +14,27 @@
   }
 }
 
-.start-point, .end-point {
+.start-point, .end-point, #comment-point-image {
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   cursor: move;
 
-  &:hover, &.hover {
+  &:hover:not(.dragging), &.start-point.hover {
     outline: 2px solid green;
   }
 
-  &.dragging {
+  &.start-point.dragging {
     outline: 2px solid green;
     background-color: green;
   }
+}
+
+#comment-point-image {
+  position: absolute;
+  top: -100px;
+  left: -100px;
+  border: 2px solid green;
+  background-color: green;
 }
 
 /* Sidebar menu */
@@ -173,7 +181,6 @@
 
       * {
         pointer-events: none;
-
       }
 
       &:not(:has(*:hover)):hover {

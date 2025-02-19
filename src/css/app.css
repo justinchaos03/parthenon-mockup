@@ -30,9 +30,12 @@ body {
 #grid-container {
   height: calc(100vh - 50px);
 
-  .widget, .start-point {
-    position: relative;
+  .widget, .start-point, .end-point {
     pointer-events: all !important;
+  }
+
+  .widget {
+    position: relative;
   
     * {
       pointer-events: none;

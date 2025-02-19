@@ -45,6 +45,7 @@
       </q-toolbar>
     </q-header>
 
+    <img id="comment-point-image" :style="{width: this.commentPointRadius * 2 + 4 + 'px'}"/>
     <q-drawer
       id="widget-list"
       v-model="leftDrawerOpen"
@@ -113,12 +114,11 @@
       :updateDragStatus="this.updateDragStatus"
       :resetDragStatus="this.resetDragStatus"
       :addWidget="this.addWidget"
-      :RESIZE_CURSOR_THRESHOLD = "this.RESIZE_CURSOR_THRESHOLD"
       :userStyling="this.userStyling"
       :restoreUserStyling="this.restoreUserStyling"
       :tooltip="this.tooltip"
-      :pixelsToInt="this.pixelsToInt"
       :drawCommentLine="this.drawCommentLine"
+      :getAbsolutePosition="this.getAbsolutePosition"
       @mounted="onCanvasMount"/>
     </q-page-container>
     <p id="page-tooltip"></p>
@@ -134,6 +134,7 @@ import WidgetGroup from '../components/WidgetGroup.vue'
 import NewWidgetForm from '../components/NewWidgetForm.vue'
 import EditWidgetForm from '../components/EditWidgetForm.vue'
 import app from '../js/app.js'
+import * as helperFunction from '../js/helper-functions.js'
 
 
 
@@ -186,12 +187,6 @@ export default defineComponent ({
       edgeDistance: null,
     })
 
-    const RESIZE_CURSOR_THRESHOLD = (widget) => {
-      return {
-        x: Math.max(0.1 * widget.offsetWidth, 6),
-        y: Math.max(0.1 * widget.offsetHeight, 6)
-      }
-    }
 
     // Store user-inputted styles temporarily when overriding
     const userStyling = ref({})
@@ -217,7 +212,6 @@ export default defineComponent ({
       currentlyEditedWidget,
       toolbarOptions,
       dragStatus,
-      RESIZE_CURSOR_THRESHOLD,
       userStyling,
       tooltip,
       canvasSVG
@@ -433,7 +427,9 @@ export default defineComponent ({
       newWidget.setAttribute('draggable', 'true')
 
       newWidget.addEventListener('dragover', (event) => {
-        if (this.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset?.widgetId) {
+        if (this.dragStatus.draggedWidget?.dataset.widgetId !== event.currentTarget.dataset.widgetId &&
+        !(this.dragStatus.draggedWidget?.parentNode.classList.contains('comment') && this.dragStatus.target != 'end')
+        )  {
           event.currentTarget.classList.add('green')
         }
       })
@@ -462,7 +458,7 @@ export default defineComponent ({
       newWidget.addEventListener("mousemove", (event) => {
         const x = event.offsetX
         const y = event.offsetY
-        const resizeCursorThreshold = this.RESIZE_CURSOR_THRESHOLD(newWidget)
+        const resizeCursorThreshold = helperFunction.getResizeCursorThreshold(newWidget)
 
         this.userStyling.cursor ||= newWidget.style.cursor.length > 0 ? newWidget.style.cursor : 'pointer'
         // change cursor based on which corner user is hovering over
@@ -582,15 +578,12 @@ export default defineComponent ({
     // Depending on whether a line with the given id exists, draws or redraws comment line on the page's svg from startPoint([x1, y1]) and endPoint([x2, y2])
     // If the user provides delta values, shift the line's startpoint by startDelta and endpoint by endDelta
     drawCommentLine (lineID, {startPoint = [null, null], endPoint = [null, null]}, {startDelta = [null, null], endDelta = [null, null]} = {}) {
-
       let line = this.currentPageWidgets.widgets[lineID]?.line
       const ns = "http://www.w3.org/2000/svg"
       const [x1, y1, x2, y2] = [...startPoint, ...endPoint]
       const [deltaX1, deltaY1, deltaX2, deltaY2] = [...startDelta, ...endDelta]
 
       if (line) {
-
-
         line.setAttributeNS(null, "x1", x1 ?? parseFloat(line.getAttributeNS(null, "x1")) + deltaX1 ?? 0)
         line.setAttributeNS(null, "y1", y1 ?? parseFloat(line.getAttributeNS(null, "y1"))  + deltaY1 ?? 0)
 
@@ -639,7 +632,7 @@ export default defineComponent ({
         if (comment) {
           // If widget is a comment, alter its DOM accordingly. Only applicable to newly created widgets dragged from widget editor
           const oldWidgetPreview = oldWidget.offsetParent
-          const previewPadding = this.pixelsToInt(window.getComputedStyle(oldWidgetPreview).getPropertyValue('padding-top'))
+          const previewPadding = helperFunction.pixelsToInt(window.getComputedStyle(oldWidgetPreview).getPropertyValue('padding-top'))
           const previewWidth = oldWidgetPreview.offsetWidth
 
           newWidget.style.position = 'absolute'
@@ -656,13 +649,13 @@ export default defineComponent ({
           commentContainer.appendChild(newWidget)
 
           const startPoint = newWidget.querySelector('.start-point')
-          startPoint.dataset.id = this.currentWidgetId
+          startPoint.dataset.widgetId = this.currentWidgetId
 
           const endPoint = document.createElement('div')
           endPoint.classList.add('end-point')
           endPoint.style.position = 'absolute'
           endPoint.draggable = true
-          endPoint.dataset.id = this.currentWidgetId
+          endPoint.dataset.widgetId = this.currentWidgetId
           endPoint.style.width = `${2 * this.commentPointRadius}px`
           endPoint.style.top =  `${comment.end.HTMLNode.style.top}`
           endPoint.style.left = `${comment.end.HTMLNode.style.left}`
@@ -670,13 +663,14 @@ export default defineComponent ({
 
           
 
+          const dropLocationPosition = this.getAbsolutePosition(pageNode)
           // Starting point location on the canvas SVG
-          const x1 = x + comment.start.HTMLNode.offsetLeft + this.commentPointRadius
-          const y1 = y + comment.start.HTMLNode.offsetTop + this.commentPointRadius
+          const x1 = x + dropLocationPosition.left + comment.start.HTMLNode.offsetLeft + this.commentPointRadius
+          const y1 = y + dropLocationPosition.top + comment.start.HTMLNode.offsetTop + this.commentPointRadius
 
           // Ending point location on the canvas SVG
-          const x2 = x - previewWidth /2 + comment.end.HTMLNode.offsetLeft + oldWidget.offsetWidth / 2 + this.commentPointRadius
-          const y2 = y + comment.end.HTMLNode.offsetTop - previewPadding + this.commentPointRadius
+          const x2 = x + dropLocationPosition.left - previewWidth /2 + comment.end.HTMLNode.offsetLeft + oldWidget.offsetWidth / 2 + this.commentPointRadius
+          const y2 = y + dropLocationPosition.top + comment.end.HTMLNode.offsetTop - previewPadding + this.commentPointRadius
 
           
 
@@ -748,12 +742,12 @@ export default defineComponent ({
 
         if (startPoint && endPoint) {
           // Need to scale based on commentContainer
-          const [containerTop, containerLeft] = [this.pixelsToInt(newWidget.style.top), this.pixelsToInt(newWidget.style.left)]
-          const [widgetTop, widgetLeft] = [this.pixelsToInt(newWidget.children[0].style.top), this.pixelsToInt(newWidget.children[0].style.left)] 
-          const x1 = this.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft
-          const y1 = this.pixelsToInt(startPoint.style.top) + containerTop + widgetTop
-          const x2 = this.pixelsToInt(endPoint.style.left) + containerLeft
-          const y2 = this.pixelsToInt(endPoint.style.top) + containerTop
+          const [containerTop, containerLeft] = [helperFunction.pixelsToInt(newWidget.style.top), helperFunction.pixelsToInt(newWidget.style.left)]
+          const [widgetTop, widgetLeft] = [helperFunction.pixelsToInt(newWidget.children[0].style.top), helperFunction.pixelsToInt(newWidget.children[0].style.left)] 
+          const x1 = helperFunction.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft
+          const y1 = helperFunction.pixelsToInt(startPoint.style.top) + containerTop + widgetTop
+          const x2 = helperFunction.pixelsToInt(endPoint.style.left) + containerLeft
+          const y2 = helperFunction.pixelsToInt(endPoint.style.top) + containerTop
 
           this.renderWidget({
             commentContainer: newWidget,
@@ -841,8 +835,13 @@ export default defineComponent ({
       this.canvasSVG = document.getElementById('arrow-container')
     },
 
-    pixelsToInt (pixels) {
-      return parseInt(pixels.replace('px', ''))
+    getAbsolutePosition (element) {
+      // Get position of element relative to the grid canvas
+      const boundingRect = element.getBoundingClientRect()
+      return {
+        top: boundingRect.top - this.pageMetaData.pageContainer.offsetTop,
+        left: boundingRect.left - this.pageMetaData.pageContainer.offsetLeft
+      }
     }
   },
   computed: {

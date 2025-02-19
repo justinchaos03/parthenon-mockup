@@ -31,6 +31,7 @@
 <script>
 import { comment } from 'postcss'
 import { defineComponent, ref } from 'vue'
+import * as helperFunction from '../js/helper-functions.js'
 
 export default defineComponent ({
   name: 'PageIndex',
@@ -71,10 +72,6 @@ export default defineComponent ({
       type: Function
     },
 
-    RESIZE_CURSOR_THRESHOLD: {
-      type: Function
-    },
-
     userStyling: {
       type: Object
     },
@@ -87,15 +84,17 @@ export default defineComponent ({
       type: Object
     },
 
-    pixelsToInt: {
+    drawCommentLine: {
       type: Function
     },
 
-    drawCommentLine: {
+    getAbsolutePosition: {
       type: Function
     }
   },
   setup (props) {
+    const commentPointDragImage = ref(null)
+
     const gridMetaData = ref({
       SNAP_THRESHOLD: 16,
       gridContainer: null,
@@ -137,16 +136,30 @@ export default defineComponent ({
 
     numGridRows () {
       return this.gridMetaData.numGridRows
-    }
+    },
+
+    canvasTop () {
+      return this.props.pageMetaData.pageContainer.offsetTop
+    },
+
+    canvasLeft () {
+      return this.props.pageMetaData.pageContainer.offsetLeft
+    },
   },
 
   methods: {
     onDragStart (e) {
       if (e.target.classList.contains('start-point') || e.target.classList.contains('end-point')) {
-        var img = document.createElement("img");   
-        img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-        e.dataTransfer.setDragImage(img, 0, 0);
+        if (e.target.classList.contains('start-point')) {
+          var img = document.createElement("img");   
+          img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+          e.dataTransfer.setDragImage(img, 0, 0);
+        } else {
+          e.dataTransfer.setDragImage(this.commentPointDragImage, this.commentPointRadius + 2, this.commentPointRadius + 2)
+        }
+
         e.target.classList.add('dragging')
         
         if (e.target.classList.contains('start-point')) {
@@ -154,21 +167,25 @@ export default defineComponent ({
               dragType: 'comment-line',
               draggedWidget: e.target,
               target: 'start',
-              id: e.target.dataset.id
+              id: e.target.dataset.widgetId,
+              initialClientX: e.clientX,
+              initialClientY: e.clientY
           })
         } else if (e.target.classList.contains('end-point')) {
           this.props.updateDragStatus({
               dragType: 'comment-line',
               draggedWidget: e.target,
               target: 'end',
-              id: e.target.dataset.id
+              id: e.target.dataset.widgetId,
+              initialClientX: e.clientX,
+              initialClientY: e.clientY
           })
         }
       } else {
         // resize or move widget
         const x = e.offsetX
         const y = e.offsetY
-        const resizeCursorThreshold = this.props.RESIZE_CURSOR_THRESHOLD(e.target)
+        const resizeCursorThreshold = helperFunction.getResizeCursorThreshold(e.target)
 
         let cursorThresholdPlacement = {}
         if (x < resizeCursorThreshold.x) {
@@ -204,9 +221,11 @@ export default defineComponent ({
             edgeDistance: null
           }
           if (e.target.parentNode.classList.contains('comment')) {
-            dragData.startPoint = this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint
-            dragData.startPointInitialX = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left)
-            dragData.startPointInitialY = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top)
+            dragData.startPoint = {
+              node: this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint,
+              initialX: helperFunction.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left),
+              initialY: helperFunction.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top),
+            }
           } 
           this.props.updateDragStatus(dragData)
         } else {
@@ -229,19 +248,45 @@ export default defineComponent ({
               bottom: e.target.offsetHeight - e.offsetY,
               left: e.offsetX, 
               right: e.target.offsetWidth - e.offsetX
+            },
+            initialClientX: e.clientX,
+            initialClientY: e.clientY
+          }
+
+          
+
+          if (e.target.parentNode.classList.contains('comment')) {
+            dragData.startPoint = {
+              node: this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint,
+              initialX: helperFunction.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left),
+              initialY: helperFunction.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top)
             }
           }
 
-          if (e.target.parentNode.classList.contains('comment')) {
-            dragData.startPoint = this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint
-            dragData.startPointInitialX = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.left)
-            dragData.startPointInitialY = this.props.pixelsToInt(this.props.pageWidgets.widgets[e.target.dataset.widgetId].startPoint.style.top)
-            dragData.widgetTop = this.props.pixelsToInt(e.target.style.top)
-            dragData.widgetLeft = this.props.pixelsToInt(e.target.style.left)
-            dragData.edgeDistance = {
-              // calculate distance from cursor to widget borders
-            }
-          } 
+          const commentLines = []
+          e.target.querySelectorAll('.comment').forEach(comment => {
+            const [startPoint, endPoint] = [comment.querySelector('.start-point'), comment.querySelector('& > .end-point')]
+            commentLines.push({
+              widgetId: comment.querySelector('.widget').dataset.widgetId,
+              startPoint: {
+                node: startPoint,
+                initialX: helperFunction.pixelsToInt(startPoint.style.left),
+                initialY: helperFunction.pixelsToInt(startPoint.style.top)
+              },
+              endPoint: {
+                node: endPoint,
+                initialX: helperFunction.pixelsToInt(endPoint.style.left),
+                initialY: helperFunction.pixelsToInt(endPoint.style.top)
+              }
+            })
+          })
+          // Startpoint needs to account for comment offset + widget offset inside comment
+          // Endpoint needs to account for comment offset
+          // HTML: Comment -> widget & endpoint, widget ->startpoint
+
+          if (commentLines.length > 0) {
+            dragData.commentLines = commentLines
+          }
 
           this.props.updateDragStatus(dragData)
         }
@@ -253,8 +298,8 @@ export default defineComponent ({
     onDragOver (e) {
       e.preventDefault()
       const dragType = this.props.dragStatus.dragType
-      const canvasOffsetLeft = e.clientX - this.props.pageMetaData.pageContainer.offsetLeft
-      const canvasOffsetTop = e.clientY - this.props.pageMetaData.pageContainer.offsetTop
+      const [canvasOffsetLeft, canvasOffsetTop] = [e.clientX - this.canvasLeft, e.clientY - this.canvasTop]
+
 
       if (dragType === 'comment-line') {
         // Move dragged start/end point and line
@@ -263,8 +308,7 @@ export default defineComponent ({
         
         const [commentLeft, commentTop] = [commentWidget.rootElement.offsetLeft, commentWidget.rootElement.offsetTop]
         const [widgetLeft, widgetTop] = [widget.offsetLeft, widget.offsetTop]
-        const cursorOffsetLeft = canvasOffsetLeft - commentLeft
-        const cursorOffsetTop = canvasOffsetTop - commentTop
+        const [cursorOffsetLeft, cursorOffsetTop] = [canvasOffsetLeft - commentLeft, canvasOffsetTop - commentTop]
         
 
         switch (this.props.dragStatus.target) {
@@ -278,8 +322,6 @@ export default defineComponent ({
             this.props.drawCommentLine(this.props.dragStatus.id, {startPoint: [commentLeft + widgetLeft + cursorAbsoluteX, commentTop + widgetTop + cursorAbsoluteY]})
             break
           case 'end':
-            commentWidget.endPoint.style.left = `${cursorOffsetLeft - this.commentPointRadius}px`
-            commentWidget.endPoint.style.top = `${cursorOffsetTop - this.commentPointRadius}px`
             this.props.drawCommentLine(this.props.dragStatus.id, {endPoint: [canvasOffsetLeft, canvasOffsetTop]})
             break
         }
@@ -345,12 +387,33 @@ export default defineComponent ({
           }
         }
 
-        if (this.props.dragStatus.startPoint && dragType === 'moving') {
-          const [lineX, lineY] = [
-            canvasOffsetLeft - this.props.dragStatus.edgeDistance.left + this.props.dragStatus.startPointInitialX + this.commentPointRadius,
-            canvasOffsetTop - this.props.dragStatus.edgeDistance.top + this.props.dragStatus.startPointInitialY + this.commentPointRadius
+        if (dragType === 'moving') {
+          if (this.props.dragStatus.startPoint) {
+            console.log(this.props.dragStatus.startPoint)
+            const [startX, startY] = [
+              canvasOffsetLeft - this.props.dragStatus.edgeDistance.left + this.props.dragStatus.startPoint.initialX + this.commentPointRadius,
+              canvasOffsetTop - this.props.dragStatus.edgeDistance.top + this.props.dragStatus.startPoint.initialY + this.commentPointRadius
+            ]
+            this.props.drawCommentLine(widget.dataset.widgetId, {startPoint: [startX, startY]})
+          }
+          
+          const [deltaX, deltaY] = [
+            e.clientX - this.props.dragStatus.initialClientX,
+            e.clientY - this.props.dragStatus.initialClientY
           ]
-          this.props.drawCommentLine(widget.dataset.widgetId, {startPoint: [lineX, lineY]})
+
+          this.props.dragStatus.commentLines?.forEach(comment => {
+            const commentStartRect = comment.startPoint.node.offsetParent.getBoundingClientRect()
+            console.log(comment)
+            console.log(comment.endPoint.node.offsetParent)
+            const commentEndRect = comment.endPoint.node.offsetParent.getBoundingClientRect()
+            this.props.drawCommentLine(comment.widgetId, {
+              startPoint: [commentStartRect.left + comment.startPoint.initialX + this.commentPointRadius - this.canvasLeft + deltaX, 
+                          commentStartRect.top + comment.startPoint.initialY + this.commentPointRadius - this.canvasTop + deltaY],
+              endPoint: [commentEndRect.left + comment.endPoint.initialX + this.commentPointRadius - this.canvasLeft + deltaX, 
+                          commentEndRect.top + comment.endPoint.initialY + this.commentPointRadius - this.canvasTop + deltaY],
+            })
+          })
         }
       } 
     },
@@ -363,12 +426,47 @@ export default defineComponent ({
 
     onDragDrop (e) {
       e.preventDefault()
+      let dropLocation = null
+
+      
+      if (this.props.dragStatus.startPoint && this.props.dragStatus.target !== 'end') {
+        // Handle dropping a comment widget
+        const comment = this.props.dragStatus.draggedWidget.parentNode
+        dropLocation = comment.parentNode
+
+      } else if (e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id')) {
+        // Handle droping on a different widget 
+        dropLocation = e.target
+      } else {
+        dropLocation = this.gridMetaData.gridContainer
+      }
+      
       if (this.props.dragStatus.dragType === 'comment-line') {
         e.target.classList.remove('dragging')
-      } else if (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving') {
-        const dropLocation = e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id') ? e.target : this.gridMetaData.gridContainer
+        const widgetId = this.props.dragStatus.draggedWidget.dataset.widgetId
+        const commentWidget = this.props.pageWidgets.widgets[widgetId]
 
-        const gridRect = dropLocation.getBoundingClientRect()
+        if (this.props.dragStatus.target === 'end') {
+          const [canvasOffsetLeft, canvasOffsetTop] = [e.clientX - this.canvasLeft, e.clientY - this.canvasTop]
+          // const [commentLeft, commentTop] = [commentWidget.rootElement.offsetLeft, commentWidget.rootElement.offsetTop]
+          const commentRect = this.getAbsolutePosition(commentWidget.rootElement)
+          const [cursorOffsetLeft, cursorOffsetTop] = [canvasOffsetLeft - commentRect.left, canvasOffsetTop - commentRect.top]
+
+          commentWidget.endPoint.classList.remove('dragging')
+          commentWidget.endPoint.style.left = `${cursorOffsetLeft - this.commentPointRadius}px`
+          commentWidget.endPoint.style.top = `${cursorOffsetTop - this.commentPointRadius}px`
+
+          const gridPlacement = {
+            placement:'absolute',
+            x: e.clientX,
+            y: e.clientY,
+            endPoint: true
+          }
+          this.moveWidget(widgetId, dropLocation, gridPlacement)
+        }
+      } else if (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving') {
+        // comment widgets should have their droplocation be based on their parent, if not dragging the endpoint
+        const dropLocationPosition = this.props.getAbsolutePosition(dropLocation)
 
         let gridPlacement = {}
         
@@ -389,14 +487,14 @@ export default defineComponent ({
         } else {
           gridPlacement = {
             placement:'absolute',
-            x: e.clientX - gridRect.left - e.dataTransfer.getData('width') / 2,
-            y: e.clientY - gridRect.top - e.dataTransfer.getData('height') / 2
+            x: e.clientX - dropLocationPosition.left - this.canvasLeft - this.props.dragStatus.edgeDistance.left,
+            y: e.clientY - dropLocationPosition.top - this.canvasTop - this.props.dragStatus.edgeDistance.top
           }
         }
     
         
         if (e.dataTransfer.getData('moving')) {
-          this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement, this.dragStatus.comment)
+          this.moveWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement)
         } else {
           this.props.addWidget(e.dataTransfer.getData('id'), dropLocation, gridPlacement, this.dragStatus.comment)
         }
@@ -413,7 +511,7 @@ export default defineComponent ({
         const widget = this.props.dragStatus.draggedWidget
         const widgetId = widget.dataset.widgetId
         const startPoint = this.props.dragStatus.startPoint
-        const [startPointInitialX, startPointInitialY] = [this.props.dragStatus.startPointInitialX, this.props.dragStatus.startPointInitialY]
+        const [startPointInitialX, startPointInitialY] = [startPoint?.initialX, startPoint?.initialY]
 
         const [initialClientX, initialClientY] = [this.props.dragStatus.initialClientX, this.props.dragStatus.initialClientY]
         const deltaX = e.clientX - initialClientX
@@ -439,7 +537,7 @@ export default defineComponent ({
           widget.style.width = `${newWidth}px`
 
           if (startPoint && deltaX < 0) {
-            if (this.props.pixelsToInt(startPoint.style.left) - this.commentPointRadius > newWidth) {
+            if (helperFunction.pixelsToInt(startPoint.style.left) - this.commentPointRadius > newWidth) {
               startPoint.style.left = `${newWidth - this.commentPointRadius}px`
               redraw = true
             }
@@ -469,7 +567,7 @@ export default defineComponent ({
           widget.style.height = `${newHeight}px`
 
           if (startPoint && deltaY > 0) {
-            if (this.props.pixelsToInt(startPoint.style.top) - this.commentPointRadius > newHeight) {
+            if (helperFunction.pixelsToInt(startPoint.style.top) - this.commentPointRadius > newHeight) {
               startPoint.style.top = `${newHeight - this.commentPointRadius}px`
               redraw = true
             }
@@ -493,9 +591,11 @@ export default defineComponent ({
       this.props.resetDragStatus()
     },
 
-    moveWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0}) {
+    moveWidget (widgetId, pageNode, {placement='absolute', x = 0, y = 0, endPoint = false}) {
       // Can experiment with transferring innerHTML instead if too slow
       // Should just grab widget from pagewidgets.widgets by widget ID, instead of using element ID
+
+      // displacedWidget will be the comment container or the widget itself
       const displacedElement = this.props.pageWidgets.widgets[widgetId]
       const displacedWidget = displacedElement.rootElement
       // if (pageNode === this.gridMetaData.gridContainer) {
@@ -505,23 +605,52 @@ export default defineComponent ({
       if (placement === 'absolute') {
         displacedWidget.style.position = 'absolute'
 
+        // If widget is a comment
         if (displacedElement.startPoint) {
-          // If widget is a comment, offset placement relative to widget location in comment
-          console.log(this.props.dragStatus.edgeDistance)
-          console.log(this.props.dragStatus.widgetLeft)
-          console.log(this.props.dragStatus.widgetTop)
-          displacedWidget.style.top = `${y + this.props.dragStatus.widgetTop - this.props.dragStatus.edgeDistance.top}px`
-          displacedWidget.style.left = `${x + this.props.dragStatus.widgetLeft - this.props.dragStatus.edgeDistance.left}px`
+          if (endPoint) {
+            // If not dragging widget over itself
+            if (pageNode !== displacedWidget) {
+              const commentAbsolutePosition = this.props.getAbsolutePosition(displacedWidget)
+
+              if (pageNode === this.gridMetaData.gridContainer) {
+                // If comment line endpoint is dragged out of widget, untether it from the widget
+                // Make comment positioned relative to gridcontainer
+                displacedWidget.style.top = `${commentAbsolutePosition.top}px`
+                displacedWidget.style.left = `${commentAbsolutePosition.left}px`
+              } else {
+                // If comment line endpoint is dragged into a widget, tether it to the widget
+                // Make comment positioned relative to widget
+                const pageNodeAbsolutePosition = this.props.getAbsolutePosition(pageNode)
+
+                displacedWidget.style.top = `${commentAbsolutePosition.top - pageNodeAbsolutePosition.top}px`
+                displacedWidget.style.left = `${commentAbsolutePosition.left - pageNodeAbsolutePosition.left}px`
+              }
+            } 
+          } else {
+            //  absolute placement relative to widget location in comment
+            // const displacedWidgetPosition = this.props.getAbsolutePosition(displacedWidget)
+            const commentedWidget = displacedWidget.querySelector('.widget')
+            const newWidgetTop = y - helperFunction.pixelsToInt(commentedWidget.style.top)
+            const newWidgetLeft = x - helperFunction.pixelsToInt(commentedWidget.style.left)
+
+            // Keep endpoint in same location even as widget is moved
+            displacedElement.endPoint.style.top = `${helperFunction.pixelsToInt(displacedElement.endPoint.style.top) - (newWidgetTop - helperFunction.pixelsToInt(displacedWidget.style.top))}px`
+            displacedElement.endPoint.style.left = `${helperFunction.pixelsToInt(displacedElement.endPoint.style.left) - (newWidgetLeft - helperFunction.pixelsToInt(displacedWidget.style.left))}px`
+
+
+            displacedWidget.style.top = `${newWidgetTop}px`
+            displacedWidget.style.left = `${newWidgetLeft}px`
+          }
+
         } else {
           displacedWidget.style.top = `${y}px`
           displacedWidget.style.left = `${x}px`
         }
 
-
         this.getVirtualWidget(widgetId).attributes.style = displacedWidget.getAttribute('style')
       }
 
-      if (pageNode !== displacedWidget && pageNode !== displacedWidget.parentNode) {
+      if (pageNode !== displacedWidget && !(displacedElement.startPoint && !endPoint)) {
         pageNode.appendChild(displacedWidget)
       }
     },
@@ -591,6 +720,7 @@ export default defineComponent ({
     this.gridMetaData.numGridColumns = 8
     this.gridMetaData.numGridRows = Math.ceil(this.pageHeight / 200)
 
+    this.commentPointDragImage = document.getElementById('comment-point-image')
   
     const styleSheet = new CSSStyleSheet()
 

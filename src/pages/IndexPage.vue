@@ -389,7 +389,6 @@ export default defineComponent ({
 
         if (dragType === 'moving') {
           if (this.props.dragStatus.startPoint) {
-            console.log(this.props.dragStatus.startPoint)
             const [startX, startY] = [
               canvasOffsetLeft - this.props.dragStatus.edgeDistance.left + this.props.dragStatus.startPoint.initialX + this.commentPointRadius,
               canvasOffsetTop - this.props.dragStatus.edgeDistance.top + this.props.dragStatus.startPoint.initialY + this.commentPointRadius
@@ -404,8 +403,6 @@ export default defineComponent ({
 
           this.props.dragStatus.commentLines?.forEach(comment => {
             const commentStartRect = comment.startPoint.node.offsetParent.getBoundingClientRect()
-            console.log(comment)
-            console.log(comment.endPoint.node.offsetParent)
             const commentEndRect = comment.endPoint.node.offsetParent.getBoundingClientRect()
             this.props.drawCommentLine(comment.widgetId, {
               startPoint: [commentStartRect.left + comment.startPoint.initialX + this.commentPointRadius - this.canvasLeft + deltaX, 
@@ -455,6 +452,7 @@ export default defineComponent ({
           commentWidget.endPoint.classList.remove('dragging')
           commentWidget.endPoint.style.left = `${cursorOffsetLeft - this.commentPointRadius}px`
           commentWidget.endPoint.style.top = `${cursorOffsetTop - this.commentPointRadius}px`
+          // update virtual widget
 
           const gridPlacement = {
             placement:'absolute',
@@ -582,7 +580,11 @@ export default defineComponent ({
           this.props.drawCommentLine(widgetId, {startPoint: [lineX, lineY]})
         }
 
-        this.getVirtualWidget(widgetId).attributes.style = this.props.dragStatus.draggedWidget.getAttribute('style')
+        if (startPoint) {
+          this.getVirtualWidget(widgetId).children.content.attributes.style = this.props.dragStatus.draggedWidget.getAttribute('style')
+        } else {
+          this.getVirtualWidget(widgetId).attributes.style = this.props.dragStatus.draggedWidget.getAttribute('style')
+        }
       }
     },
 
@@ -598,6 +600,13 @@ export default defineComponent ({
       // displacedWidget will be the comment container or the widget itself
       const displacedElement = this.props.pageWidgets.widgets[widgetId]
       const displacedWidget = displacedElement.rootElement
+
+      const virtualWidget = this.getVirtualWidget(widgetId)
+
+      console.log('element')
+      console.log(displacedElement)
+      console.log('widget')
+      console.log(displacedWidget)
       // if (pageNode === this.gridMetaData.gridContainer) {
       //   displacedWidget.style.gridColumn = `${columnNum + 1} / span 1`
       //   displacedWidget.style.gridRow = `${rowNum + 1} / span 1`
@@ -625,7 +634,7 @@ export default defineComponent ({
                 displacedWidget.style.top = `${commentAbsolutePosition.top - pageNodeAbsolutePosition.top}px`
                 displacedWidget.style.left = `${commentAbsolutePosition.left - pageNodeAbsolutePosition.left}px`
               }
-            } 
+            }
           } else {
             //  absolute placement relative to widget location in comment
             // const displacedWidgetPosition = this.props.getAbsolutePosition(displacedWidget)
@@ -642,16 +651,47 @@ export default defineComponent ({
             displacedWidget.style.left = `${newWidgetLeft}px`
           }
 
+          virtualWidget.children.content.children.startPoint.attributes.style = displacedElement.startPoint.getAttribute('style')
+          virtualWidget.children.endPoint.attributes.style = displacedElement.endPoint.getAttribute('style')
         } else {
           displacedWidget.style.top = `${y}px`
           displacedWidget.style.left = `${x}px`
         }
-
-        this.getVirtualWidget(widgetId).attributes.style = displacedWidget.getAttribute('style')
+        
+        virtualWidget.attributes.style = displacedWidget.getAttribute('style')
       }
 
+      // If Widget's parent is changed
       if (pageNode !== displacedWidget && !(displacedElement.startPoint && !endPoint)) {
         pageNode.appendChild(displacedWidget)
+
+        // Updates will need to account for dropping onto the canvas
+        // ONly have children..how do you manipulate
+        // INherently you get the location of the child index so it' sfine
+        
+        // const virtualWidget = this.getVirtualWidget(widgetId)
+        const virtualWidgetPath = this.props.virtualCanvas.idMap[widgetId]
+        const pageNodeVirtualWidget = pageNode.dataset.widgetId ? this.getVirtualWidget(pageNode.dataset.widgetId) : null
+
+        if (pageNodeVirtualWidget) {
+          // If dropped in a widget
+          pageNodeVirtualWidget.children[widgetId] = virtualWidget
+          delete this.props.virtualCanvas.elements[widgetId]
+          this.props.virtualCanvas.idMap[widgetId] = `${ this.props.virtualCanvas.idMap[pageNode.dataset.widgetId]}.children[${widgetId}]`
+        } else {
+          // Dropped onto the canvas
+          const parentVirtualWidget= eval(`this.props.virtualCanvas.elements${virtualWidgetPath.substring(0, virtualWidgetPath.lastIndexOf('.children'))}`)
+
+          if (parentVirtualWidget.children && widgetId in parentVirtualWidget.children) {
+            this.props.virtualCanvas.elements[widgetId] = virtualWidget
+          
+            delete parentVirtualWidget.children[widgetId]
+            this.props.virtualCanvas.idMap[widgetId] = `[${widgetId}]`
+          }
+        }
+
+        // Update mapping
+        // Update virutal dom
       }
     },
 

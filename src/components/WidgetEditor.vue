@@ -52,7 +52,7 @@
           <p class="label">Preview</p>
           <div class="preview-container">
             <svg class="preview-arrow-container"></svg>
-            <div :id="this.props.name" :data-title="this.props.name" :style="this.style" v-html="this.compiledHtml" class='widget'></div>
+            <div :id="this.props.name" :data-title="this.props.name" :style="this.style" v-html="this.compiledHtml" ref="preview" class='widget'></div>
           </div>
         </q-item-section>
       </q-item>
@@ -61,7 +61,7 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, useTemplateRef } from 'vue'
 import * as he from 'he'
 import axios from 'axios'
 
@@ -119,7 +119,7 @@ export default {
   },
   setup (props) {
     const rawHTML = ref("")
-    const preview = ref(null)
+    const preview = useTemplateRef("preview")
     const previewSVG = ref(null)
     const fields = null
     const comment = ref(false)
@@ -263,6 +263,7 @@ export default {
 
     addTextEditors() {
       const textElements = this.preview.querySelectorAll("p, span, a, h1, h2, h3, h4, h5, h6")
+
       if (textElements.length > 0) {
         const textEditorHTML = document.createDocumentFragment()
 
@@ -284,7 +285,8 @@ export default {
 
         textEditorContainer.addEventListener("change", event => {
           const preview = this.textEditors[event.target.dataset.id].previewElement
-          preview.innerHTML = event.target.value
+          preview.textContent = event.target.value
+          
           this.rawHTML = this.preview.innerHTML
         })
         this.fields.appendChild(textEditorHTML)
@@ -302,7 +304,6 @@ export default {
     }
   },
   mounted () {
-    this.preview = document.getElementById(this.props.name)
     this.previewSVG = document.querySelector(`#${this.props.name}-editor .preview-arrow-container`)
     this.fields = document.querySelector(`#${this.props.name}-editor .fields`)
     if (!this.props.html.endsWith('.html')) {
@@ -365,6 +366,18 @@ export default {
         this.commentArrow.end.HTMLNode.remove()
         this.commentArrow.line.HTMLNode.remove()
       }
+    },
+
+    rawHTML(newHTML, oldHTML) {
+      this.$nextTick(() => {
+        const textElements = this.preview.querySelectorAll("p, span, a, h1, h2, h3, h4, h5, h6")
+        if (textElements.length > 0) {
+
+          textElements.forEach((element, index) => {
+            this.textEditors[index].previewElement = element
+          })
+        }
+      })
     }
   }
 }

@@ -234,6 +234,7 @@ export default defineComponent ({
         exportJson.addedWidgetEditors[name] = data
       })
       exportJson.virtualDOM = JSON.stringify(this.currentPageVirtualCanvas.elements)
+      console.log(this.currentPageVirtualCanvas.elements)
 
       
       const JsonURI = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportJson));
@@ -269,7 +270,8 @@ export default defineComponent ({
           const currentPage = document.getElementById('grid-container')
           const fragment = document.createDocumentFragment()
           const parentNodes = JSON.parse(result.virtualDOM)
-          Object.values(parentNodes).forEach(node => this.importWidget(node, fragment))
+          console.log(parentNodes)
+          Object.values(parentNodes).forEach(node => this.importWidget(node, fragment, [0, 0]))
           currentPage.appendChild(fragment)
 
           Object.entries(result.addedWidgetEditors).forEach(([name, data]) => {
@@ -415,7 +417,9 @@ export default defineComponent ({
     },
 
     submitEditWidgetForm (values) {
-      this.getVirtualWidget(this.currentlyEditedWidget.dataset.widgetId).attributes.style = values.style
+      const virtualWidget = this.getVirtualWidget(this.currentlyEditedWidget.dataset.widgetId)
+      virtualWidget.attributes.style = values.style
+      virtualWidget.textContent = values.HTML
     },
 
     // add attributes and event listeners to newly-created widget
@@ -486,12 +490,15 @@ export default defineComponent ({
 
     },
 
-    // add a widget or commented widget to the DOM and virtual DOM,
+    // Add a widget or commented widget to the DOM and virtual DOM,
     // beneath the specified pageNode
     // Also internally store a reference mapped to the widget's id\
     renderWidget (widget, pageNode) {
       let virtualDOMData = null
       let DOMElement = null
+      // Check if widget is comment widget, so it is not appended to the virtual DOM as thought
+      // it were a separate widget
+      const isCommentWidget = widget.classList?.contains('widget') && pageNode.classList?.contains('comment')
 
       if (widget instanceof Element) {
         virtualDOMData = {
@@ -499,11 +506,15 @@ export default defineComponent ({
           attributes: Object.assign({},
               ...Array.from(widget.attributes, ({name, value}) => ({[name]: value}))
           ),
-          textContent: widget.textContent,
+          textContent: widget.innerHTML,
           children: {}
         }
         DOMElement = widget
-        this.currentPageWidgets.widgets[this.currentWidgetId] = { rootElement: widget }
+
+        if (!isCommentWidget) {
+          this.currentPageWidgets.widgets[this.currentWidgetId] = { rootElement: widget }
+        }
+
       } else if (widget.commentContainer) {
         const { commentContainer, startPoint, endPoint, line } = widget
         const newWidget = commentContainer.children[0]
@@ -519,7 +530,7 @@ export default defineComponent ({
               attributes: Object.assign({},
                   ...Array.from(newWidget.attributes, ({name, value}) => ({[name]: value}))
               ),
-              textContent: newWidget.textContent,
+              textContent: Array.from(newWidget.querySelectorAll('& > *:not(.start-point)')).map(node => node.outerHTML).join(''),
               children: {
                 startPoint: {
                   tag: startPoint.nodeName,
@@ -541,6 +552,7 @@ export default defineComponent ({
             }
           }
         }
+
         DOMElement = commentContainer
         this.currentPageWidgets.widgets[this.currentWidgetId] = {
           rootElement: commentContainer,
@@ -551,27 +563,30 @@ export default defineComponent ({
         this.drawCommentLine(this.currentWidgetId, line)
       }
 
-      this.currentPageVirtualCanvas.idMap[this.currentWidgetId] = `${ this.currentPageVirtualCanvas.idMap[pageNode.dataset?.widgetId] ?  this.currentPageVirtualCanvas.idMap[pageNode.dataset.widgetId] + '.children' : ''}[${this.currentWidgetId}]`
+      if (!isCommentWidget) {
+        this.currentPageVirtualCanvas.idMap[this.currentWidgetId] = `${ this.currentPageVirtualCanvas.idMap[pageNode.dataset?.widgetId] ?  this.currentPageVirtualCanvas.idMap[pageNode.dataset.widgetId] + '.children' : ''}[${this.currentWidgetId}]`
 
-      if (pageNode.dataset?.widgetId in this.currentPageVirtualCanvas.idMap) {
-        this.getVirtualWidget(pageNode.dataset.widgetId).children[this.currentWidgetId] = virtualDOMData
-      } else {
-        this.currentPageVirtualCanvas.elements[this.currentWidgetId] = virtualDOMData
+        if (pageNode.dataset?.widgetId in this.currentPageVirtualCanvas.idMap) {
+          this.getVirtualWidget(pageNode.dataset.widgetId).children[this.currentWidgetId] = virtualDOMData
+        } else {
+          this.currentPageVirtualCanvas.elements[this.currentWidgetId] = virtualDOMData
+        }
+
+
+        // if (pageNode === this.gridMetadata.gridContainer) {
+        //   if (!newWidget.style.gridColumn) {
+        //     newWidget.style.gridColumn = `${columnNum + 1} / span 1`
+        //   }
+
+        //   if (!newWidget.style.gridRow) {
+        //     newWidget.style.gridRow = `${rowNum + 1} / span 1`
+        //   }
+        // }
+
+
+        this.currentPageWidgets.widgetId += 1
       }
-
-
-      // if (pageNode === this.gridMetadata.gridContainer) {
-      //   if (!newWidget.style.gridColumn) {
-      //     newWidget.style.gridColumn = `${columnNum + 1} / span 1`
-      //   }
-
-      //   if (!newWidget.style.gridRow) {
-      //     newWidget.style.gridRow = `${rowNum + 1} / span 1`
-      //   }
-      // }
-
-
-      this.currentPageWidgets.widgetId += 1
+      
       pageNode.appendChild(DOMElement)
     },
 
@@ -704,7 +719,7 @@ export default defineComponent ({
     },
 
     // import a widget from a structured JSON and add it to the DOM
-    importWidget (widgetJSON, pageNode) {
+    importWidget (widgetJSON, pageNode, [relativeX, relativeY]) {
       const newWidget = document.createElement(widgetJSON.tag)
       let returnedWidget = newWidget
 
@@ -713,11 +728,13 @@ export default defineComponent ({
       })
 
       if (newWidget.classList.contains('widget')) { 
-        newWidget.textContent = widgetJSON.textContent
+        newWidget.innerHTML = widgetJSON.textContent
         this.setWidgetProperties(newWidget)
         this.renderWidget(newWidget, pageNode)
         Object.entries(widgetJSON.children).forEach(([childId, child]) => {
-          const childWidget = this.importWidget(child, newWidget)
+          const childWidget = this.importWidget(child, newWidget, 
+            [relativeX + helperFunction.pixelsToInt(newWidget.style.left), 
+            relativeY + helperFunction.pixelsToInt(newWidget.style.top)])
           if (childWidget.classList.contains('start-point')) {
             returnedWidget = childWidget
           }
@@ -731,7 +748,9 @@ export default defineComponent ({
         let startPoint = null
         let endPoint = null
         Object.entries(widgetJSON.children).forEach(([childId, child]) => {
-          const childWidget = this.importWidget(child, newWidget)
+          const childWidget = this.importWidget(child, newWidget, 
+            [relativeX + helperFunction.pixelsToInt(newWidget.style.left), 
+            relativeY + helperFunction.pixelsToInt(newWidget.style.top)])
           if (childWidget.classList.contains('start-point')) {
             startPoint = childWidget
           } else if (childWidget.classList.contains('end-point')) {
@@ -744,16 +763,16 @@ export default defineComponent ({
           // Need to scale based on commentContainer
           const [containerTop, containerLeft] = [helperFunction.pixelsToInt(newWidget.style.top), helperFunction.pixelsToInt(newWidget.style.left)]
           const [widgetTop, widgetLeft] = [helperFunction.pixelsToInt(newWidget.children[0].style.top), helperFunction.pixelsToInt(newWidget.children[0].style.left)] 
-          const x1 = helperFunction.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft
-          const y1 = helperFunction.pixelsToInt(startPoint.style.top) + containerTop + widgetTop
-          const x2 = helperFunction.pixelsToInt(endPoint.style.left) + containerLeft
-          const y2 = helperFunction.pixelsToInt(endPoint.style.top) + containerTop
+          const x1 = helperFunction.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft + this.commentPointRadius
+          const y1 = helperFunction.pixelsToInt(startPoint.style.top) + containerTop + widgetTop + this.commentPointRadius
+          const x2 = helperFunction.pixelsToInt(endPoint.style.left) + containerLeft + this.commentPointRadius
+          const y2 = helperFunction.pixelsToInt(endPoint.style.top) + containerTop + this.commentPointRadius
 
           this.renderWidget({
             commentContainer: newWidget,
             startPoint: startPoint,
             endPoint: endPoint,
-            line: { startPoint: [x1, y1], endPoint: [ x2, y2 ] }
+            line: { startPoint: [relativeX + x1, relativeY + y1], endPoint: [ relativeX + x2, relativeY + y2 ] }
           }, pageNode)
         }
       }

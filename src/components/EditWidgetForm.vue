@@ -78,9 +78,10 @@ export default {
   methods: {
     submitEditWidgetForm () {
       this.$emit('submit', {
-        'style': this.style
+        'style': this.style,
+        'HTML': this.innerHTML
       })
-      this.props.widget.style = values.style
+      this.props.widget.style = this.style
       this.closeEditWidgetForm()
     },
 

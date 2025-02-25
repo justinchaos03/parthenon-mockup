@@ -234,9 +234,8 @@ export default defineComponent ({
         exportJson.addedWidgetEditors[name] = data
       })
       exportJson.virtualDOM = JSON.stringify(this.currentPageVirtualCanvas.elements)
-      console.log(this.currentPageVirtualCanvas.elements)
 
-      
+
       const JsonURI = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportJson));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute('href', JsonURI);
@@ -270,7 +269,6 @@ export default defineComponent ({
           const currentPage = document.getElementById('grid-container')
           const fragment = document.createDocumentFragment()
           const parentNodes = JSON.parse(result.virtualDOM)
-          console.log(parentNodes)
           Object.values(parentNodes).forEach(node => this.importWidget(node, fragment, [0, 0]))
           currentPage.appendChild(fragment)
 
@@ -565,9 +563,9 @@ export default defineComponent ({
 
       if (!isCommentWidget) {
         this.currentPageVirtualCanvas.idMap[this.currentWidgetId] = `${ this.currentPageVirtualCanvas.idMap[pageNode.dataset?.widgetId] ?  this.currentPageVirtualCanvas.idMap[pageNode.dataset.widgetId] + '.children' : ''}[${this.currentWidgetId}]`
-
         if (pageNode.dataset?.widgetId in this.currentPageVirtualCanvas.idMap) {
-          this.getVirtualWidget(pageNode.dataset.widgetId).children[this.currentWidgetId] = virtualDOMData
+          const parentWidget = this.getVirtualWidget(pageNode.dataset.widgetId)
+          parentWidget.children[this.currentWidgetId] = virtualDOMData
         } else {
           this.currentPageVirtualCanvas.elements[this.currentWidgetId] = virtualDOMData
         }
@@ -727,9 +725,10 @@ export default defineComponent ({
         newWidget.setAttribute(attribute, value)
       })
 
-      if (newWidget.classList.contains('widget')) { 
+      if (newWidget.classList.contains('widget')) {
         newWidget.innerHTML = widgetJSON.textContent
         this.setWidgetProperties(newWidget)
+        
         this.renderWidget(newWidget, pageNode)
         Object.entries(widgetJSON.children).forEach(([childId, child]) => {
           const childWidget = this.importWidget(child, newWidget, 
@@ -745,36 +744,41 @@ export default defineComponent ({
           }
         })
       } else if (newWidget.classList.contains('comment')) {
-        let startPoint = null
-        let endPoint = null
-        Object.entries(widgetJSON.children).forEach(([childId, child]) => {
-          const childWidget = this.importWidget(child, newWidget, 
+        const startPoint = this.importWidget(widgetJSON.children.content, newWidget, 
             [relativeX + helperFunction.pixelsToInt(newWidget.style.left), 
             relativeY + helperFunction.pixelsToInt(newWidget.style.top)])
-          if (childWidget.classList.contains('start-point')) {
-            startPoint = childWidget
-          } else if (childWidget.classList.contains('end-point')) {
-            endPoint = childWidget
-            newWidget.appendChild(endPoint)
+        const commentWidget = startPoint.parentNode
+        
+
+        const endPoint = this.importWidget(widgetJSON.children.endPoint, newWidget, 
+            [relativeX + helperFunction.pixelsToInt(newWidget.style.left), 
+            relativeY + helperFunction.pixelsToInt(newWidget.style.top)])
+        newWidget.appendChild(endPoint)
+
+        
+
+        // Need to scale based on commentContainer
+        const [containerTop, containerLeft] = [helperFunction.pixelsToInt(newWidget.style.top), helperFunction.pixelsToInt(newWidget.style.left)]
+        const [widgetTop, widgetLeft] = [helperFunction.pixelsToInt(newWidget.children[0].style.top), helperFunction.pixelsToInt(newWidget.children[0].style.left)] 
+        const x1 = helperFunction.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft + this.commentPointRadius
+        const y1 = helperFunction.pixelsToInt(startPoint.style.top) + containerTop + widgetTop + this.commentPointRadius
+        const x2 = helperFunction.pixelsToInt(endPoint.style.left) + containerLeft + this.commentPointRadius
+        const y2 = helperFunction.pixelsToInt(endPoint.style.top) + containerTop + this.commentPointRadius
+
+        this.renderWidget({
+          commentContainer: newWidget,
+          startPoint: startPoint,
+          endPoint: endPoint,
+          line: { startPoint: [relativeX + x1, relativeY + y1], endPoint: [ relativeX + x2, relativeY + y2 ] }
+        }, pageNode)
+
+        Object.entries(widgetJSON.children).forEach(([childId, child]) => {
+          if (childId !== 'content' && childId !== 'endPoint') {
+            this.importWidget(child, commentWidget,
+              [relativeX + containerLeft + widgetLeft, 
+              relativeY + containerTop+ widgetTop])
           }
         })
-
-        if (startPoint && endPoint) {
-          // Need to scale based on commentContainer
-          const [containerTop, containerLeft] = [helperFunction.pixelsToInt(newWidget.style.top), helperFunction.pixelsToInt(newWidget.style.left)]
-          const [widgetTop, widgetLeft] = [helperFunction.pixelsToInt(newWidget.children[0].style.top), helperFunction.pixelsToInt(newWidget.children[0].style.left)] 
-          const x1 = helperFunction.pixelsToInt(startPoint.style.left) + containerLeft + widgetLeft + this.commentPointRadius
-          const y1 = helperFunction.pixelsToInt(startPoint.style.top) + containerTop + widgetTop + this.commentPointRadius
-          const x2 = helperFunction.pixelsToInt(endPoint.style.left) + containerLeft + this.commentPointRadius
-          const y2 = helperFunction.pixelsToInt(endPoint.style.top) + containerTop + this.commentPointRadius
-
-          this.renderWidget({
-            commentContainer: newWidget,
-            startPoint: startPoint,
-            endPoint: endPoint,
-            line: { startPoint: [relativeX + x1, relativeY + y1], endPoint: [ relativeX + x2, relativeY + y2 ] }
-          }, pageNode)
-        }
       }
 
       return returnedWidget

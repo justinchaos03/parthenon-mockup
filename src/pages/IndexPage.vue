@@ -603,10 +603,6 @@ export default defineComponent ({
 
       const virtualWidget = this.getVirtualWidget(widgetId)
 
-      console.log('element')
-      console.log(displacedElement)
-      console.log('widget')
-      console.log(displacedWidget)
       // if (pageNode === this.gridMetaData.gridContainer) {
       //   displacedWidget.style.gridColumn = `${columnNum + 1} / span 1`
       //   displacedWidget.style.gridRow = `${rowNum + 1} / span 1`
@@ -662,14 +658,10 @@ export default defineComponent ({
       }
 
       // If Widget's parent is changed
+      // console.log(pageNode)
       if (pageNode !== displacedWidget && !(displacedElement.startPoint && !endPoint)) {
         pageNode.appendChild(displacedWidget)
-
-        // Updates will need to account for dropping onto the canvas
-        // ONly have children..how do you manipulate
-        // INherently you get the location of the child index so it' sfine
         
-        // const virtualWidget = this.getVirtualWidget(widgetId)
         const virtualWidgetPath = this.props.virtualCanvas.idMap[widgetId]
         const pageNodeVirtualWidget = pageNode.dataset.widgetId ? this.getVirtualWidget(pageNode.dataset.widgetId) : null
 
@@ -690,8 +682,7 @@ export default defineComponent ({
           }
         }
 
-        // Update mapping
-        // Update virutal dom
+        console.log(this.props.virtualCanvas)
       }
     },
 

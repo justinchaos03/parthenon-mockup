@@ -127,17 +127,23 @@ export default {
             this.watchedStyles[styleTag] = originalStyleValue
           }
         })
-        console.log(this.watchedStyles)
+
         this.updatedWatchedStyles = []
       }
     },
     'props.widget' (newWidget) {
+      const editableTextNodes = ["p", "span", "a", "h1", "h2", "h3", "h4", "h5", "h6"]
+      const editableTextQuery = editableTextNodes.join(", ")
       const textElementMapping = {}
-      const textElements = newWidget.querySelectorAll("p, span, a, h1, h2, h3, h4, h5, h6")
-      
-      if (textElements.length > 0) {
-        textElements.forEach((element, index) => textElementMapping[index] = element); 
-      }
+      const widgetContentNodes = Array.from(newWidget.children).filter(child => !child.classList.contains('start-point') && !child.classList.contains('widget'))
+      widgetContentNodes.forEach((node, index) => {
+        const contentNodeIsText = editableTextNodes.includes(node.tagName.toLowerCase())
+        if (contentNodeIsText) {
+          textElementMapping[`${index}-0`] = node
+        }
+
+        node.querySelectorAll(editableTextQuery).forEach((subNode, subIndex) => textElementMapping[`${index}-${subIndex + contentNodeIsText}`] = subNode)
+      })
 
       this.textElements = textElementMapping
     }

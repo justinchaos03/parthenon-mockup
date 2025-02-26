@@ -432,7 +432,7 @@ export default defineComponent ({
         dropLocation = comment.parentNode
 
       } else if (e.target.classList.contains('widget') && e.target.dataset.widgetId !== e.dataTransfer.getData('id')) {
-        // Handle droping on a different widget 
+        // Handle dropping on a different widget 
         dropLocation = e.target
       } else {
         dropLocation = this.gridMetaData.gridContainer
@@ -459,8 +459,12 @@ export default defineComponent ({
             x: e.clientX,
             y: e.clientY,
             endPoint: true
-          }
+          } 
           this.moveWidget(widgetId, dropLocation, gridPlacement)
+        } else if (this.props.dragStatus.target === 'start') {
+          const virtualWidget = this.getVirtualWidget(widgetId)
+          const virtualStartPoint = virtualWidget.children.content.children.startPoint
+          virtualStartPoint.attributes.style = commentWidget.startPoint.style.cssText
         }
       } else if (this.props.dragStatus.dragType === 'adding' || this.props.dragStatus.dragType === 'moving') {
         // comment widgets should have their droplocation be based on their parent, if not dragging the endpoint

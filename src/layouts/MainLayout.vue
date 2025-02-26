@@ -235,7 +235,6 @@ export default defineComponent ({
       })
       exportJson.virtualDOM = JSON.stringify(this.currentPageVirtualCanvas.elements)
 
-
       const JsonURI = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportJson));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute('href', JsonURI);

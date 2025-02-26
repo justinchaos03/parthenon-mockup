@@ -67,21 +67,40 @@ export default {
     const form = ref(null)
     const style = ref("")
     const textElements = {}
+    const watchedStyles = {
+      "top": null,
+      "left": null
+    }
+    const updatedWatchedStyles = []
+
+
 
     return {
       props,
       form,
       style,
-      textElements
+      textElements,
+      watchedStyles,
+      updatedWatchedStyles
     }
   },
   methods: {
     submitEditWidgetForm () {
+
+      this.props.widget.style = this.style
+      Object.keys(this.watchedStyles).forEach(styleTag => {
+        const submittedStyleValue = this.props.widget.style[styleTag]
+        if (this.watchedStyles[styleTag] !== submittedStyleValue) {
+          this.updatedWatchedStyles.push(styleTag)
+        }
+      })
+
       this.$emit('submit', {
         'style': this.style,
-        'HTML': this.innerHTML
+        'HTML': this.innerHTML,
+        'updatedWatchedStyles': this.updatedWatchedStyles
       })
-      this.props.widget.style = this.style
+      console.log(this.updatedWatchedStyles)
       this.closeEditWidgetForm()
     },
 
@@ -98,9 +117,21 @@ export default {
     }
   },
   watch: {
+    'props.isOpen' (isOpen) {
+      if (isOpen) {
+        this.style = this.props.widget.style.cssText
+
+        Object.keys(this.watchedStyles).forEach(styleTag => {
+          const originalStyleValue = this.props.widget.style[styleTag]
+          if (originalStyleValue) {
+            this.watchedStyles[styleTag] = originalStyleValue
+          }
+        })
+        console.log(this.watchedStyles)
+        this.updatedWatchedStyles = []
+      }
+    },
     'props.widget' (newWidget) {
-      this.style = this.props.widget.style.cssText
-      
       const textElementMapping = {}
       const textElements = newWidget.querySelectorAll("p, span, a, h1, h2, h3, h4, h5, h6")
       

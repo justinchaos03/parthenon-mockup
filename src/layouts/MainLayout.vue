@@ -414,9 +414,30 @@ export default defineComponent ({
     },
 
     submitEditWidgetForm (values) {
-      const virtualWidget = this.getVirtualWidget(this.currentlyEditedWidget.dataset.widgetId)
+      const editedWidgetID = this.currentlyEditedWidget.dataset.widgetId
+      const virtualWidget = this.getVirtualWidget(editedWidgetID)
       virtualWidget.attributes.style = values.style
       virtualWidget.textContent = values.HTML
+
+      if (values.updatedWatchedStyles.length > 0) {
+        const changedStyles = values.updatedWatchedStyles
+
+        // If the comment widget's position changed, redraw the comment line
+        if (this.currentlyEditedWidget.parentNode.classList.contains('comment') && 
+        (changedStyles.includes("top") || changedStyles.includes("left"))) {
+          const widgetData = this.currentPageWidgets.widgets[editedWidgetID]
+          const startPointPosition = this.getAbsolutePosition(widgetData.startPoint)
+          this.drawCommentLine(editedWidgetID, {
+            startPoint: [
+              `${startPointPosition.left + this.pageMetaData.commentPointRadius}px`, 
+              `${startPointPosition.top + this.pageMetaData.commentPointRadius}px`
+            ],
+            endPoint: [
+              widgetData.line.getAttribute("x2"), 
+              widgetData.line.getAttribute("y2")]
+          })
+        }
+      }
     },
 
     // add attributes and event listeners to newly-created widget
